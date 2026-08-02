@@ -1,0 +1,312 @@
+# Colección de Requests para Thunder Client - DameCancha API
+# Base URL: http://localhost:3000
+
+## 1. Crear Deporte (Fútbol)
+POST http://localhost:3000/deporte
+Content-Type: application/json
+
+{
+  "nombre_deporte": "Fútbol",
+  "descripcion_deporte": "Fútbol 5, 7 y 11"
+}
+
+---
+
+## 2. Crear Deporte (Básquet)
+POST http://localhost:3000/deporte
+Content-Type: application/json
+
+{
+  "nombre_deporte": "Básquet",
+  "descripcion_deporte": "Cancha de básquet techada"
+}
+
+---
+
+## 3. Crear Deporte (Tenis)
+POST http://localhost:3000/deporte
+Content-Type: application/json
+
+{
+  "nombre_deporte": "Tenis",
+  "descripcion_deporte": "Cancha de tenis de polvo de ladrillo"
+}
+
+---
+
+## 4. Listar todos los Deportes
+GET http://localhost:3000/deporte
+
+---
+
+## 5. Crear Dueño de Cancha
+POST http://localhost:3000/dueno_cancha
+Content-Type: application/json
+
+{
+  "nombre_dueno": "Carlos",
+  "apellido_dueno": "Rodríguez",
+  "email_dueno": "carlos.rodriguez@email.com",
+  "password_dueno": "password123",
+  "telefono_dueno": "+54 11 1234-5678",
+  "estado_dueno": "activo"
+}
+
+---
+
+## 6. Listar todos los Dueños
+GET http://localhost:3000/dueno_cancha
+
+---
+
+## 7. Crear Club (Necesitas el id_dueno del paso anterior)
+POST http://localhost:3000/club
+Content-Type: application/json
+
+{
+  "id_dueno": 1,
+  "nombre_club": "Club Deportivo Palermo",
+  "direccion_club": "Av. Santa Fe 3500",
+  "ciudad_club": "Buenos Aires",
+  "telefono_club": "+54 11 4567-8900",
+  "descripcion_club": "Club deportivo con canchas de fútbol y básquet",
+  "estado": "activo"
+}
+
+---
+
+## 8. Crear otro Club
+POST http://localhost:3000/club
+Content-Type: application/json
+
+{
+  "id_dueno": 1,
+  "nombre_club": "Centro Deportivo Belgrano",
+  "direccion_club": "Calle Libertad 1200",
+  "ciudad_club": "Buenos Aires",
+  "telefono_club": "+54 11 5678-9012",
+  "descripcion_club": "Centro deportivo con canchas de tenis y pádel",
+  "estado": "activo"
+}
+
+---
+
+## 9. Listar todos los Clubs
+GET http://localhost:3000/club
+
+---
+
+## 10. Crear Cancha (Necesitas id_club e id_deporte de pasos anteriores)
+POST http://localhost:3000/cancha
+Content-Type: application/json
+
+{
+  "id_club": 1,
+  "id_deporte": 1,
+  "nombre_cancha": "Cancha Fútbol 5 - A",
+  "descripcion_cancha": "Cancha de césped sintético con iluminación LED",
+  "precio_por_hora": 15000,
+  "activa": 1
+}
+
+---
+
+## 11. Crear otra Cancha
+POST http://localhost:3000/cancha
+Content-Type: application/json
+
+{
+  "id_club": 1,
+  "id_deporte": 1,
+  "nombre_cancha": "Cancha Fútbol 7 - B",
+  "descripcion_cancha": "Cancha de césped natural",
+  "precio_por_hora": 20000,
+  "activa": 1
+}
+
+---
+
+## 12. Crear Cancha de Básquet
+POST http://localhost:3000/cancha
+Content-Type: application/json
+
+{
+  "id_club": 1,
+  "id_deporte": 2,
+  "nombre_cancha": "Cancha Básquet Techada",
+  "descripcion_cancha": "Cancha techada con piso flotante",
+  "precio_por_hora": 12000,
+  "activa": 1
+}
+
+---
+
+## 13. Listar todas las Canchas
+GET http://localhost:3000/cancha
+
+---
+
+## 14. Crear Usuario (Cliente que hace reservas)
+POST http://localhost:3000/usuario
+Content-Type: application/json
+
+{
+  "nombre_usuario": "María",
+  "apellido_usuario": "González",
+  "email_usuario": "maria.gonzalez@email.com",
+  "password_usuario": "password456",
+  "telefono_usuario": "+54 11 9876-5432"
+}
+
+---
+
+## 15. Crear otro Usuario
+POST http://localhost:3000/usuario
+Content-Type: application/json
+
+{
+  "nombre_usuario": "Juan",
+  "apellido_usuario": "Pérez",
+  "email_usuario": "juan.perez@email.com",
+  "password_usuario": "password789",
+  "telefono_usuario": "+54 11 8765-4321"
+}
+
+---
+
+## 16. Listar todos los Usuarios
+GET http://localhost:3000/usuario
+
+---
+
+## 17. Crear Disponibilidad (Necesitas id_cancha)
+POST http://localhost:3000/disponibilidad
+Content-Type: application/json
+
+{
+  "id_cancha": 1,
+  "dia_semana": 1,
+  "hora_inicio": "08:00",
+  "hora_fin": "23:00"
+}
+
+---
+
+## 18. Crear más Disponibilidades para la misma cancha
+POST http://localhost:3000/disponibilidad
+Content-Type: application/json
+
+{
+  "id_cancha": 1,
+  "dia_semana": 2,
+  "hora_inicio": "08:00",
+  "hora_fin": "23:00"
+}
+
+---
+
+POST http://localhost:3000/disponibilidad
+Content-Type: application/json
+
+{
+  "id_cancha": 1,
+  "dia_semana": 3,
+  "hora_inicio": "08:00",
+  "hora_fin": "23:00"
+}
+
+---
+
+## 19. Listar disponibilidades
+GET http://localhost:3000/disponibilidad
+
+---
+
+## 20. Crear Reserva (Necesitas id_usuario e id_cancha)
+POST http://localhost:3000/reserva
+Content-Type: application/json
+
+{
+  "id_usuario": 1,
+  "id_cancha": 1,
+  "fecha": "2026-04-27",
+  "hora_inicio": "18:00",
+  "hora_fin": "19:00",
+  "monto_total": 15000,
+  "estado": "confirmada"
+}
+
+---
+
+## 21. Crear otra Reserva
+POST http://localhost:3000/reserva
+Content-Type: application/json
+
+{
+  "id_usuario": 2,
+  "id_cancha": 1,
+  "fecha": "2026-04-27",
+  "hora_inicio": "19:00",
+  "hora_fin": "20:00",
+  "monto_total": 15000,
+  "estado": "confirmada"
+}
+
+---
+
+## 22. Listar todas las Reservas
+GET http://localhost:3000/reserva
+
+---
+
+## 23. Obtener una Cancha específica
+GET http://localhost:3000/cancha/1
+
+---
+
+## 24. Obtener un Club específico
+GET http://localhost:3000/club/1
+
+---
+
+## 25. Actualizar una Cancha (ejemplo: cambiar precio)
+PATCH http://localhost:3000/cancha/1
+Content-Type: application/json
+
+{
+  "precio_por_hora": 18000
+}
+
+---
+
+## 26. Actualizar un Usuario
+PATCH http://localhost:3000/usuario/1
+Content-Type: application/json
+
+{
+  "telefono_usuario": "+54 11 1111-2222"
+}
+
+---
+
+## 27. Obtener todos los datos (resumen)
+GET http://localhost:3000/deporte
+GET http://localhost:3000/dueno_cancha
+GET http://localhost:3000/club
+GET http://localhost:3000/cancha
+GET http://localhost:3000/usuario
+GET http://localhost:3000/reserva
+
+---
+
+## SECUENCIA RECOMENDADA PARA PRuebas:
+# 1. Primero crear deportes (requests 1-3)
+# 2. Crear dueño de cancha (request 5)
+# 3. Crear clubs usando el id_dueno obtenido (requests 7-8)
+# 4. Crear canchas usando id_club e id_deporte (requests 10-12)
+# 5. Crear usuarios (requests 14-15)
+# 6. Crear disponibilidades (requests 17-18)
+# 7. Crear reservas (requests 20-21)
+# 8. Probar GETs para verificar datos
+# 9. Probar PATCHs para actualizar
+# 10. Probar DELETEs si es necesario

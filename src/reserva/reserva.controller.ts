@@ -1,0 +1,135 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+
+import { AuthGuard } from '../auth/guard/auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guard/roles.guard';
+import { AccessControlService } from '../auth/services/access-control.service';
+import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
+import { CreateReservaDto } from './dto/create-reserva.dto';
+import { UpdateReservaDto } from './dto/update-reserva.dto';
+import { ReservaService } from './reserva.service';
+
+@Controller('reserva')
+@UseGuards(AuthGuard)
+export class ReservaController {
+  constructor(
+    private readonly reservaService: ReservaService,
+    private readonly accessControl: AccessControlService,
+  ) {}
+
+  @Post()
+  @UseGuards(RolesGuard)
+  @Roles('usuario', 'admin')
+  create(@Body() dto: CreateReservaDto, @Req() request: AuthenticatedRequest) {
+    const idUsuario = request.user.tipo === 'admin' ? dto.id_usuario : request.user.sub;
+    return this.reservaService.create({
+      ...dto,
+      id_usuario: Number(idUsuario),
+      estado: request.user.tipo === 'admin' ? dto.estado : 'pendiente',
+    });
+  }
+
+  @Get()
+  @UseGuards(RolesGuard)
+  @Roles('admin')
+  findAll() {
+    return this.reservaService.findAll();
+  }
+
+  @Get('usuario/:idUsuario')
+  findByUsuario(
+    @Param('idUsuario', ParseIntPipe) idUsuario: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    this.accessControl.assertSelfOrAdmin(request.user, idUsuario);
+    return this.reservaService.findByUsuario(idUsuario);
+  }
+
+  @Get('club/:idClub')
+  async findByClub(
+    @Param('idClub', ParseIntPipe) idClub: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanReadReservationsForClub(request.user, idClub);
+    return this.reservaService.findByClub(idClub);
+  }
+
+  @Get('disponibilidad/:idCancha/:fecha')
+  findDisponibilidad(
+    @Param('idCancha', ParseIntPipe) idCancha: number,
+    @Param('fecha') fecha: string,
+  ) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+      throw new BadRequestException('La fecha debe tener el formato YYYY-MM-DD.');
+    }
+    return this.reservaService.findDisponibilidad(idCancha, fecha);
+  }
+
+  @Get(':id')
+  async findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanAccessReserva(request.user, id);
+    return this.reservaService.findOne(id);
+  }
+
+  @Patch(':id')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateReservaDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanAccessReserva(request.user, id);
+
+    if (request.user.tipo === 'usuario') {
+      await this.reservaService.assertUserCanModify(id);
+      const safeDto: UpdateReservaDto = {
+        id_cancha: dto.id_cancha,
+        fecha: dto.fecha,
+        hora_inicio: dto.hora_inicio,
+        hora_fin: dto.hora_fin,
+      };
+      return this.reservaService.update(id, safeDto);
+    }
+
+    if (
+      request.user.tipo !== 'admin' &&
+      dto.id_cancha !== undefined
+    ) {
+      await this.accessControl.assertCanManageCancha(
+        request.user,
+        dto.id_cancha,
+      );
+    }
+
+    return this.reservaService.update(id, {
+      ...dto,
+      id_usuario: request.user.tipo === 'admin' ? dto.id_usuario : undefined,
+    });
+  }
+
+  @Delete(':id')
+  async remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanAccessReserva(request.user, id);
+    if (request.user.tipo === 'usuario') {
+      await this.reservaService.assertUserCanModify(id);
+    }
+    return this.reservaService.remove(id);
+  }
+}

@@ -1,0 +1,18 @@
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ClubService } from './club.service';
+import { ClubController } from './club.controller';
+import { Club } from './entities/club.entity';
+import { User } from '../user/entities/user.entity';
+import { JwtModule } from '@nestjs/jwt';
+
+@Module({
+  imports: [
+    JwtModule,
+    TypeOrmModule.forFeature([Club, User]),
+  ],
+  controllers: [ClubController],
+  providers: [ClubService],
+  exports: [ClubService],
+})
+export class ClubModule {}
