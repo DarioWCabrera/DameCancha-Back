@@ -24,6 +24,11 @@ export class CreateCanchaDto {
   descripcion_cancha?: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  tipo_suelo?: string;
+
+  @IsOptional()
   @Type(() => Number)
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)

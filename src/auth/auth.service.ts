@@ -14,7 +14,7 @@ export class AuthService {
     private readonly mailService: MailService,
   ) {}
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string, rememberMe = false) {
     const result = await this.userService.login(email, password);
 
     const payload = {
@@ -24,7 +24,11 @@ export class AuthService {
       role: result.user.tipo,
     };
 
-    const token = await this.jwtService.signAsync(payload);
+    // 'Recordarme' no guarda la contraseña: solo extiende la vigencia del JWT.
+    // Sin marcar, se conserva la duración configurada por JWT_EXPIRES_IN (por defecto 1 día).
+    const token = rememberMe
+      ? await this.jwtService.signAsync(payload, { expiresIn: 60 * 60 * 24 * 30 })
+      : await this.jwtService.signAsync(payload);
 
     return { ...result, token };
   }

@@ -4,14 +4,18 @@ const required = (config: Record<string, unknown>, key: string): string => {
   return value;
 };
 
-
-const positivePort = (config: Record<string, unknown>, key: string, fallback?: number): number => {
+const positiveInteger = (
+  config: Record<string, unknown>,
+  key: string,
+  fallback: number,
+  max = Number.MAX_SAFE_INTEGER,
+): number => {
   const raw = config[key] ?? fallback;
-  const port = Number(raw);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`${key} debe ser un puerto válido.`);
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0 || value > max) {
+    throw new Error(`${key} debe ser un entero positivo válido.`);
   }
-  return port;
+  return value;
 };
 
 const requireHttpsUrl = (config: Record<string, unknown>, key: string): string => {
@@ -33,15 +37,34 @@ const booleanValue = (value: unknown, fallback = false): boolean => {
   return String(value).toLowerCase() === 'true';
 };
 
+const validateDatabaseUrl = (config: Record<string, unknown>, production: boolean): string => {
+  const value = required(config, 'DATABASE_URL');
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error('DATABASE_URL debe ser una URL PostgreSQL válida.');
+  }
+
+  if (!['postgres:', 'postgresql:'].includes(url.protocol)) {
+    throw new Error('DATABASE_URL debe usar el protocolo postgres:// o postgresql://.');
+  }
+
+  if (production && !/sslmode=(?:require|verify-full)/i.test(url.search)) {
+    throw new Error('En producción DATABASE_URL debe exigir TLS con sslmode=require o sslmode=verify-full.');
+  }
+
+  return value;
+};
+
 export function validateEnvironment(config: Record<string, unknown>) {
   const nodeEnv = String(config.NODE_ENV || 'development');
   const production = nodeEnv === 'production';
 
-  required(config, 'DB_HOST');
-  const port = positivePort(config, 'PORT', 3000);
-  const dbPort = positivePort(config, 'DB_PORT');
-  required(config, 'DB_USER');
-  required(config, 'DB_NAME');
+  const databaseUrl = validateDatabaseUrl(config, production);
+  const port = positiveInteger(config, 'PORT', 3000, 65535);
+  const dbPoolSize = positiveInteger(config, 'DB_POOL_SIZE', 5, 50);
+  const dbConnectTimeoutMs = positiveInteger(config, 'DB_CONNECT_TIMEOUT_MS', 10000, 120000);
 
   const jwtSecret = required(config, 'JWT_SECRET');
   if (jwtSecret.length < 32) {
@@ -58,23 +81,19 @@ export function validateEnvironment(config: Record<string, unknown>) {
     requireHttpsUrl(config, 'BACKEND_PUBLIC_URL');
 
     required(config, 'MAIL_HOST');
-    positivePort(config, 'MAIL_PORT');
+    positiveInteger(config, 'MAIL_PORT', 587, 65535);
     required(config, 'MAIL_USER');
     required(config, 'MAIL_PASS');
     required(config, 'MAIL_FROM');
-  }
-
-  const mpToken = String(config.MERCADOPAGO_ACCESS_TOKEN || '').trim();
-  if (mpToken) {
-    required(config, 'BACKEND_PUBLIC_URL');
-    if (production) required(config, 'MERCADOPAGO_WEBHOOK_SECRET');
   }
 
   return {
     ...config,
     NODE_ENV: nodeEnv,
     PORT: port,
-    DB_PORT: dbPort,
+    DATABASE_URL: databaseUrl,
+    DB_POOL_SIZE: dbPoolSize,
+    DB_CONNECT_TIMEOUT_MS: dbConnectTimeoutMs,
     DB_SYNC: booleanValue(config.DB_SYNC, false),
     DB_LOGGING: booleanValue(config.DB_LOGGING, false),
   };

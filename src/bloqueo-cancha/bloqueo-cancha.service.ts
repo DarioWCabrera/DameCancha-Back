@@ -177,11 +177,18 @@ export class BloqueoCanchaService {
     this.validarRangoHorario(horaInicio, horaFin);
 
     return this.dataSource.transaction(async (manager) => {
-      const cancha = await manager.getRepository(Cancha).findOne({
-        where: { id_cancha: dto.id_cancha },
-        relations: ['id_club', 'id_club.dueno'],
-        lock: { mode: 'pessimistic_write' },
-      });
+      // En PostgreSQL evitamos hacer SELECT ... FOR UPDATE sobre relaciones
+      // cargadas con LEFT JOIN. PostgreSQL no permite bloquear el lado nullable
+      // de un OUTER JOIN y eso provocaba un 500 al crear bloqueos.
+      // El permiso del dueño ya fue validado antes de entrar a la transacción;
+      // acá solo bloqueamos la fila real de la cancha para serializar reservas
+      // y bloqueos concurrentes sobre la misma cancha.
+      const cancha = await manager
+        .getRepository(Cancha)
+        .createQueryBuilder('cancha')
+        .where('cancha.id_cancha = :idCancha', { idCancha: dto.id_cancha })
+        .setLock('pessimistic_write')
+        .getOne();
 
       if (!cancha) {
         throw new NotFoundException('La cancha indicada no existe.');
@@ -282,11 +289,14 @@ export class BloqueoCanchaService {
 
     return this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(BloqueoCancha);
-      const bloqueo = await repository.findOne({
-        where: { id_bloqueo: id },
-        relations: ['cancha'],
-        lock: { mode: 'pessimistic_write' },
-      });
+      // Mismo criterio que en create(): bloquear únicamente la fila de
+      // bloqueo, sin JOINs, para que PostgreSQL pueda aplicar FOR UPDATE.
+      const bloqueo = await repository
+        .createQueryBuilder('bloqueo')
+        .where('bloqueo.id_bloqueo = :id', { id })
+        .andWhere('bloqueo.activo = :activo', { activo: 1 })
+        .setLock('pessimistic_write')
+        .getOne();
 
       if (!bloqueo || !bloqueo.activo) {
         throw new NotFoundException('El bloqueo indicado no existe.');

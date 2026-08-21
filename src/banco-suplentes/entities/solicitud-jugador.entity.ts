@@ -6,6 +6,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 import { User } from '../../user/entities/user.entity';
@@ -18,11 +19,13 @@ export enum EstadoSolicitudJugador {
   CANCELADA = 'cancelada',
 }
 
+@Index('idx_solicitud_estado', ['estado'])
 @Entity('solicitud_jugador')
 export class SolicitudJugador {
   @PrimaryGeneratedColumn({ name: 'id_solicitud' })
   id_solicitud!: number;
 
+  @Index('idx_solicitud_disponibilidad')
   @ManyToOne(
     () => DisponibilidadJugador,
     (disponibilidad) => disponibilidad.solicitudes,
@@ -31,6 +34,7 @@ export class SolicitudJugador {
   @JoinColumn({ name: 'id_disponibilidad' })
   disponibilidad!: DisponibilidadJugador;
 
+  @Index('idx_solicitud_solicitante')
   @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'id_usuario_solicitante' })
   solicitante!: User;
@@ -60,15 +64,9 @@ export class SolicitudJugador {
   })
   estado!: EstadoSolicitudJugador;
 
-  @Column({ name: 'oculta_para_solicitante', type: 'boolean', default: false })
-  oculta_para_solicitante!: boolean;
-
-  @Column({ name: 'oculta_para_propietario', type: 'boolean', default: false })
-  oculta_para_propietario!: boolean;
-
-  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'datetime' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updated_at!: Date;
 }

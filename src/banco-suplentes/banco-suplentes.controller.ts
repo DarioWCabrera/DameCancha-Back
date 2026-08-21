@@ -107,17 +107,6 @@ export class BancoSuplentesController {
     );
   }
 
-  @Patch('disponibilidades/:id/ocultar')
-  ocultarDisponibilidad(
-    @Param('id', ParseIntPipe) id: number,
-    @Req() request: RequestAutenticada,
-  ) {
-    return this.bancoSuplentesService.ocultarDisponibilidad(
-      id,
-      request.user,
-    );
-  }
-
   @Delete('disponibilidades/:id')
   removeDisponibilidad(
     @Param('id', ParseIntPipe) id: number,
@@ -160,17 +149,6 @@ export class BancoSuplentesController {
     );
   }
 
-  @Patch('solicitudes/:id/ocultar')
-  ocultarSolicitud(
-    @Param('id', ParseIntPipe) id: number,
-    @Req() request: RequestAutenticada,
-  ) {
-    return this.bancoSuplentesService.ocultarSolicitud(
-      id,
-      request.user,
-    );
-  }
-
   @Patch('solicitudes/:id/estado')
   updateEstadoSolicitud(
     @Param('id', ParseIntPipe) id: number,
@@ -183,4 +161,16 @@ export class BancoSuplentesController {
       request.user,
     );
   }
+
+  @Delete('solicitudes/:id')
+  removeSolicitud(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestAutenticada,
+  ) {
+    return this.bancoSuplentesService.removeSolicitud(
+      id,
+      request.user,
+    );
+  }
+
 }

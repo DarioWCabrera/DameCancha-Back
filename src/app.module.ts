@@ -4,9 +4,9 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { MailerModule } from '@nestjs-modules/mailer';
 
 import { validateEnvironment } from './config/env.validation';
+import { createDatabaseOptions } from './config/database.config';
 import { ReservaModule } from './reserva/reserva.module';
 import { ClubModule } from './club/club.module';
-import { PagoModule } from './pago/pago.module';
 import { DeporteModule } from './deporte/deporte.module';
 import { CanchaModule } from './cancha/cancha.module';
 import { DisponibilidadModule } from './disponibilidad/disponibilidad.module';
@@ -29,22 +29,7 @@ import { AppService } from './app.service';
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        type: 'mysql' as const,
-        host: config.getOrThrow<string>('DB_HOST'),
-        port: config.getOrThrow<number>('DB_PORT'),
-        username: config.getOrThrow<string>('DB_USER'),
-        password: config.get<string>('DB_PASSWORD') || '',
-        database: config.getOrThrow<string>('DB_NAME'),
-        autoLoadEntities: true,
-        synchronize: config.get<boolean>('DB_SYNC') === true,
-        logging: config.get<boolean>('DB_LOGGING') === true,
-        timezone: 'Z',
-        charset: 'utf8mb4_unicode_ci',
-        extra: {
-          connectionLimit: 10,
-        },
-      }),
+      useFactory: (config: ConfigService) => createDatabaseOptions(config),
     }),
     MailerModule.forRootAsync({
       inject: [ConfigService],
@@ -74,7 +59,6 @@ import { AppService } from './app.service';
     DisponibilidadModule,
     BloqueoCanchaModule,
     ReservaModule,
-    PagoModule,
     MailModule,
     GeorefModule,
     TorneoModule,

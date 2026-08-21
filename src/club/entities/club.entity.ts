@@ -43,7 +43,7 @@ export class Club {
     name: 'estado',
     type: 'enum',
     enum: ['activo', 'inactivo', 'pendiente_aprobacion'],
-    default: 'pendiente_aprobacion'
+    default: 'activo'
   })
   estado!: string;
 
@@ -55,7 +55,7 @@ export class Club {
   @JoinColumn({ name: 'id_admin_aprobado' })
   admin_aprobado!: User;
 
-  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;
 
 

@@ -56,14 +56,14 @@ export class BloqueoCancha {
 
   @Column({
     name: 'activo',
-    type: 'tinyint',
+    type: 'smallint',
     default: 1,
   })
   activo!: number;
 
   @CreateDateColumn({
     name: 'created_at',
-    type: 'datetime',
+    type: 'timestamptz',
   })
   created_at!: Date;
 }

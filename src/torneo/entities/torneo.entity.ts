@@ -60,9 +60,9 @@ export class Torneo {
   })
   estado!: EstadoTorneo;
 
-  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'datetime' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updated_at!: Date;
 }

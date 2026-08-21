@@ -311,4 +311,26 @@ export class TorneoService {
       estado: torneo.estado,
     };
   }
+
+  async removePermanently(
+    id: number,
+    usuario: UsuarioAutenticadoTorneo,
+  ) {
+    const torneo = await this.obtenerTorneoConRelaciones(id);
+
+    await this.obtenerClubYValidarPermiso(
+      torneo.club.id_club,
+      usuario,
+    );
+
+    const flyerAnterior = torneo.flyer_url;
+    await this.torneoRepository.remove(torneo);
+    this.borrarFlyerAnterior(flyerAnterior);
+
+    return {
+      message: 'El torneo fue eliminado definitivamente.',
+      id_torneo: id,
+    };
+  }
+
 }

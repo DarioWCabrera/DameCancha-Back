@@ -154,6 +154,14 @@ export class BancoSuplentesService {
     };
   }
 
+  private solicitudSigueVigente(solicitud: SolicitudJugador): boolean {
+    const fechaLimite =
+      solicitud.fecha_propuesta || solicitud.disponibilidad?.fecha_hasta;
+
+    if (!fechaLimite) return true;
+    return String(fechaLimite).slice(0, 10) >= this.fechaHoy();
+  }
+
   private mapearDisponibilidad(
     disponibilidad: DisponibilidadJugador,
     idUsuarioActual?: number,
@@ -188,13 +196,12 @@ export class BancoSuplentesService {
       fecha_desde: disponibilidad.fecha_desde,
       fecha_hasta: disponibilidad.fecha_hasta,
       descripcion: disponibilidad.descripcion,
-      contacto_visible: disponibilidad.contacto_visible,
-      contacto:
-        disponibilidad.contacto_visible && disponibilidad.usuario
-          ? this.contactoUsuario(disponibilidad.usuario)
-          : null,
+      // Los datos de contacto nunca se publican en el banco.
+      // Se comparten únicamente entre ambos jugadores cuando la solicitud
+      // queda aceptada (ver mapearSolicitud).
+      contacto_visible: false,
+      contacto: null,
       estado: disponibilidad.estado,
-      oculta_para_creador: disponibilidad.oculta_para_creador,
       es_propia: esPropia,
       created_at: disponibilidad.created_at,
       updated_at: disponibilidad.updated_at,
@@ -217,8 +224,6 @@ export class BancoSuplentesService {
     return {
       id_solicitud: solicitud.id_solicitud,
       estado: solicitud.estado,
-      oculta_para_solicitante: solicitud.oculta_para_solicitante,
-      oculta_para_propietario: solicitud.oculta_para_propietario,
       mensaje: solicitud.mensaje,
       fecha_propuesta: solicitud.fecha_propuesta,
       hora_propuesta: solicitud.hora_propuesta,
@@ -281,9 +286,10 @@ export class BancoSuplentesService {
       fecha_desde: fechaDesde,
       fecha_hasta: fechaHasta,
       descripcion: dto.descripcion.trim(),
-      contacto_visible: Boolean(dto.contacto_visible),
+      // Privacidad por diseño: el teléfono/email se comparte sólo
+      // cuando una solicitud queda aceptada.
+      contacto_visible: false,
       estado: EstadoDisponibilidadJugador.ACTIVA,
-      oculta_para_creador: false,
     });
 
     const guardada =
@@ -373,14 +379,19 @@ export class BancoSuplentesService {
   }
 
   async findMisDisponibilidades(idUsuario: number) {
-    const disponibilidades = await this.disponibilidadRepository.find({
-      where: {
-        usuario: { id_usuario: idUsuario },
-        oculta_para_creador: false,
-      },
-      relations: ['usuario', 'deporte'],
-      order: { updated_at: 'DESC' },
-    });
+    const hoy = this.fechaHoy();
+
+    const disponibilidades = await this.disponibilidadRepository
+      .createQueryBuilder('disponibilidad')
+      .innerJoinAndSelect('disponibilidad.usuario', 'usuario')
+      .innerJoinAndSelect('disponibilidad.deporte', 'deporte')
+      .where('usuario.id_usuario = :idUsuario', { idUsuario })
+      .andWhere('disponibilidad.fecha_hasta >= :hoy', { hoy })
+      .andWhere('disponibilidad.estado != :eliminada', {
+        eliminada: EstadoDisponibilidadJugador.ELIMINADA,
+      })
+      .orderBy('disponibilidad.updated_at', 'DESC')
+      .getMany();
 
     return disponibilidades.map((disponibilidad) =>
       this.mapearDisponibilidad(disponibilidad, idUsuario),
@@ -450,9 +461,9 @@ export class BancoSuplentesService {
       disponibilidad.descripcion = dto.descripcion.trim();
     }
 
-    if (dto.contacto_visible !== undefined) {
-      disponibilidad.contacto_visible = dto.contacto_visible;
-    }
+    // Aunque clientes antiguos envíen contacto_visible, ya no se habilita
+    // exposición pública de datos de contacto.
+    disponibilidad.contacto_visible = false;
 
     await this.disponibilidadRepository.save(disponibilidad);
 
@@ -511,35 +522,6 @@ export class BancoSuplentesService {
     };
   }
 
-  async ocultarDisponibilidad(
-    idDisponibilidad: number,
-    usuarioAutenticado: UsuarioAutenticadoBanco,
-  ) {
-    const disponibilidad = await this.obtenerDisponibilidadPropia(
-      idDisponibilidad,
-      usuarioAutenticado.sub,
-    );
-
-    if (
-      ![
-        EstadoDisponibilidadJugador.ELIMINADA,
-        EstadoDisponibilidadJugador.VENCIDA,
-      ].includes(disponibilidad.estado)
-    ) {
-      throw new BadRequestException(
-        'Primero eliminá o finalizá la publicación antes de quitarla de tu lista.',
-      );
-    }
-
-    disponibilidad.oculta_para_creador = true;
-    await this.disponibilidadRepository.save(disponibilidad);
-
-    return {
-      message: 'Publicación quitada de tu lista correctamente.',
-      id_disponibilidad: idDisponibilidad,
-    };
-  }
-
   async createSolicitud(
     idDisponibilidad: number,
     dto: CreateSolicitudJugadorDto,
@@ -566,6 +548,31 @@ export class BancoSuplentesService {
       throw new BadRequestException(
         'No podés enviar una solicitud a tu propia publicación.',
       );
+    }
+
+    if (disponibilidad.fecha_hasta < this.fechaHoy()) {
+      throw new BadRequestException(
+        'La publicación ya venció y no acepta nuevas solicitudes.',
+      );
+    }
+
+    if (dto.fecha_propuesta) {
+      const fechaPropuesta = dto.fecha_propuesta.slice(0, 10);
+
+      if (fechaPropuesta < this.fechaHoy()) {
+        throw new BadRequestException(
+          'La fecha propuesta no puede estar en el pasado.',
+        );
+      }
+
+      if (
+        fechaPropuesta < disponibilidad.fecha_desde ||
+        fechaPropuesta > disponibilidad.fecha_hasta
+      ) {
+        throw new BadRequestException(
+          'La fecha propuesta debe estar dentro del período publicado por el jugador.',
+        );
+      }
     }
 
     const solicitante = await this.obtenerUsuario(
@@ -599,8 +606,6 @@ export class BancoSuplentesService {
         ? this.normalizarHora(dto.hora_propuesta)
         : null,
       estado: EstadoSolicitudJugador.PENDIENTE,
-      oculta_para_solicitante: false,
-      oculta_para_propietario: false,
     });
 
     const guardada = await this.solicitudRepository.save(solicitud);
@@ -622,6 +627,8 @@ export class BancoSuplentesService {
   }
 
   async findSolicitudesRecibidas(idUsuario: number) {
+    const hoy = this.fechaHoy();
+
     const solicitudes = await this.solicitudRepository
       .createQueryBuilder('solicitud')
       .innerJoinAndSelect('solicitud.solicitante', 'solicitante')
@@ -632,9 +639,10 @@ export class BancoSuplentesService {
       .innerJoinAndSelect('disponibilidad.usuario', 'propietario')
       .innerJoinAndSelect('disponibilidad.deporte', 'deporte')
       .where('propietario.id_usuario = :idUsuario', { idUsuario })
-      .andWhere('solicitud.oculta_para_propietario = :ocultaPropietario', {
-        ocultaPropietario: false,
-      })
+      .andWhere(
+        'COALESCE(solicitud.fecha_propuesta, disponibilidad.fecha_hasta) >= :hoy',
+        { hoy },
+      )
       .orderBy('solicitud.created_at', 'DESC')
       .getMany();
 
@@ -644,19 +652,21 @@ export class BancoSuplentesService {
   }
 
   async findSolicitudesEnviadas(idUsuario: number) {
-    const solicitudes = await this.solicitudRepository.find({
-      where: {
-        solicitante: { id_usuario: idUsuario },
-        oculta_para_solicitante: false,
-      },
-      relations: [
-        'solicitante',
-        'disponibilidad',
-        'disponibilidad.usuario',
-        'disponibilidad.deporte',
-      ],
-      order: { created_at: 'DESC' },
-    });
+    const hoy = this.fechaHoy();
+
+    const solicitudes = await this.solicitudRepository
+      .createQueryBuilder('solicitud')
+      .innerJoinAndSelect('solicitud.solicitante', 'solicitante')
+      .innerJoinAndSelect('solicitud.disponibilidad', 'disponibilidad')
+      .innerJoinAndSelect('disponibilidad.usuario', 'propietario')
+      .innerJoinAndSelect('disponibilidad.deporte', 'deporte')
+      .where('solicitante.id_usuario = :idUsuario', { idUsuario })
+      .andWhere(
+        'COALESCE(solicitud.fecha_propuesta, disponibilidad.fecha_hasta) >= :hoy',
+        { hoy },
+      )
+      .orderBy('solicitud.created_at', 'DESC')
+      .getMany();
 
     return solicitudes.map((solicitud) =>
       this.mapearSolicitud(solicitud, idUsuario),
@@ -680,6 +690,12 @@ export class BancoSuplentesService {
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
+    }
+
+    if (!this.solicitudSigueVigente(solicitud)) {
+      throw new ConflictException(
+        'La solicitud venció porque ya pasó la fecha prevista para jugar.',
+      );
     }
 
     if (solicitud.estado !== EstadoSolicitudJugador.PENDIENTE) {
@@ -731,7 +747,7 @@ export class BancoSuplentesService {
     );
   }
 
-  async ocultarSolicitud(
+  async removeSolicitud(
     idSolicitud: number,
     usuarioAutenticado: UsuarioAutenticadoBanco,
   ) {
@@ -741,18 +757,11 @@ export class BancoSuplentesService {
         'solicitante',
         'disponibilidad',
         'disponibilidad.usuario',
-        'disponibilidad.deporte',
       ],
     });
 
     if (!solicitud) {
       throw new NotFoundException('Solicitud no encontrada.');
-    }
-
-    if (solicitud.estado === EstadoSolicitudJugador.PENDIENTE) {
-      throw new BadRequestException(
-        'Primero gestioná la solicitud antes de quitarla de tu lista.',
-      );
     }
 
     const esPropietario =
@@ -764,22 +773,14 @@ export class BancoSuplentesService {
 
     if (!esPropietario && !esSolicitante) {
       throw new ForbiddenException(
-        'No tenés permiso para quitar esta solicitud.',
+        'No tenés permiso para eliminar esta solicitud.',
       );
     }
 
-    if (esPropietario) {
-      solicitud.oculta_para_propietario = true;
-    }
-
-    if (esSolicitante) {
-      solicitud.oculta_para_solicitante = true;
-    }
-
-    await this.solicitudRepository.save(solicitud);
+    await this.solicitudRepository.remove(solicitud);
 
     return {
-      message: 'Solicitud quitada de tu lista correctamente.',
+      message: 'Solicitud eliminada correctamente.',
       id_solicitud: idSolicitud,
     };
   }

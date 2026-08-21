@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm';
 
 import { CreateReservaDto } from './dto/create-reserva.dto';
 import { UpdateReservaDto } from './dto/update-reserva.dto';
@@ -25,6 +25,22 @@ export class ReservaService {
     private readonly configService: ConfigService,
   ) {}
 
+  private normalizarFechaCalendario(fecha: string | Date): string {
+    if (typeof fecha === 'string') {
+      const match = fecha.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+      if (match) return match[1];
+    }
+
+    if (fecha instanceof Date && !Number.isNaN(fecha.getTime())) {
+      const anio = fecha.getUTCFullYear();
+      const mes = String(fecha.getUTCMonth() + 1).padStart(2, '0');
+      const dia = String(fecha.getUTCDate()).padStart(2, '0');
+      return `${anio}-${mes}-${dia}`;
+    }
+
+    return String(fecha).slice(0, 10);
+  }
+
   private normalizarUsuario(usuario: Reserva['usuario']) {
     if (!usuario) return null;
     return {
@@ -41,7 +57,7 @@ export class ReservaService {
 
     return {
       id_reserva: reserva.id_reserva,
-      fecha: reserva.fecha,
+      fecha: this.normalizarFechaCalendario(reserva.fecha),
       hora_inicio: reserva.hora_inicio,
       hora_fin: reserva.hora_fin,
       monto_total: reserva.monto_total,
@@ -62,6 +78,12 @@ export class ReservaService {
           }
         : null,
     };
+  }
+
+  private esSolapamientoPostgres(error: unknown): boolean {
+    if (!(error instanceof QueryFailedError)) return false;
+    const driverError = (error as QueryFailedError & { driverError?: { code?: string } }).driverError;
+    return driverError?.code === '23P01';
   }
 
   private normalizarHora(hora: string): string {
@@ -168,7 +190,9 @@ export class ReservaService {
     const horaFin = this.normalizarHora(createReservaDto.hora_fin);
     this.validarRango(fecha, horaInicio, horaFin);
 
-    const savedId = await this.dataSource.transaction(async (manager) => {
+    let savedId: number;
+    try {
+      savedId = await this.dataSource.transaction(async (manager) => {
       const cancha = await manager
         .getRepository(Cancha)
         .createQueryBuilder('cancha')
@@ -205,14 +229,21 @@ export class ReservaService {
         hora_inicio: horaInicio,
         hora_fin: horaFin,
         monto_total: this.calcularMonto(cancha, horaInicio, horaFin),
-        estado: createReservaDto.estado || 'pendiente',
+        estado: createReservaDto.estado || 'confirmada',
+        estado_pago: 'pago_en_club',
         usuario: { id_usuario: createReservaDto.id_usuario } as any,
         cancha: { id_cancha: createReservaDto.id_cancha } as any,
       });
 
-      const saved = await manager.getRepository(Reserva).save(reserva);
-      return saved.id_reserva;
-    });
+        const saved = await manager.getRepository(Reserva).save(reserva);
+        return saved.id_reserva;
+      });
+    } catch (error) {
+      if (this.esSolapamientoPostgres(error)) {
+        throw new ConflictException('La cancha ya está reservada para esa fecha y horario.');
+      }
+      throw error;
+    }
 
     return this.findOne(savedId);
   }
@@ -228,7 +259,7 @@ export class ReservaService {
     const reservas = await this.reservaRepository.find({
       where: { usuario: { id_usuario: idUsuario } },
       relations: ['usuario', 'cancha', 'cancha.id_club', 'cancha.id_deporte'],
-      order: { fecha: 'DESC', hora_inicio: 'DESC' },
+      order: { fecha: 'ASC', hora_inicio: 'ASC' },
     });
     return reservas.map((reserva) => this.normalizarReserva(reserva));
   }
@@ -252,7 +283,7 @@ export class ReservaService {
         id_reserva: reserva.id_reserva,
         id_bloqueo: null,
         id_cancha: idCancha,
-        fecha: reserva.fecha,
+        fecha,
         hora_inicio: reserva.hora_inicio,
         hora_fin: reserva.hora_fin,
         estado: reserva.estado,
@@ -305,8 +336,9 @@ export class ReservaService {
     const horaFin = this.normalizarHora(dto.hora_fin ?? current.hora_fin);
     this.validarRango(fecha, horaInicio, horaFin);
 
-    await this.dataSource.transaction(async (manager) => {
-      const cancha = await manager
+    try {
+      await this.dataSource.transaction(async (manager) => {
+        const cancha = await manager
         .getRepository(Cancha)
         .createQueryBuilder('cancha')
         .where('cancha.id_cancha = :idCancha', { idCancha })
@@ -342,8 +374,14 @@ export class ReservaService {
       reserva.monto_total = this.calcularMonto(cancha, horaInicio, horaFin);
       if (dto.estado !== undefined) reserva.estado = dto.estado;
       if (dto.id_usuario !== undefined) reserva.usuario = { id_usuario: dto.id_usuario } as any;
-      await repo.save(reserva);
-    });
+        await repo.save(reserva);
+      });
+    } catch (error) {
+      if (this.esSolapamientoPostgres(error)) {
+        throw new ConflictException('La cancha ya está reservada para esa fecha y horario.');
+      }
+      throw error;
+    }
 
     return this.findOne(id);
   }

@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   Param,
   ParseIntPipe,
   Patch,
@@ -37,7 +38,7 @@ export class ReservaController {
     return this.reservaService.create({
       ...dto,
       id_usuario: Number(idUsuario),
-      estado: request.user.tipo === 'admin' ? dto.estado : 'pendiente',
+      estado: request.user.tipo === 'admin' ? dto.estado : 'confirmada',
     });
   }
 
@@ -48,7 +49,16 @@ export class ReservaController {
     return this.reservaService.findAll();
   }
 
+  @Get('mias')
+  @UseGuards(RolesGuard)
+  @Roles('usuario')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  findMine(@Req() request: AuthenticatedRequest) {
+    return this.reservaService.findByUsuario(Number(request.user.sub));
+  }
+
   @Get('usuario/:idUsuario')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   findByUsuario(
     @Param('idUsuario', ParseIntPipe) idUsuario: number,
     @Req() request: AuthenticatedRequest,
@@ -58,6 +68,7 @@ export class ReservaController {
   }
 
   @Get('club/:idClub')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   async findByClub(
     @Param('idClub', ParseIntPipe) idClub: number,
     @Req() request: AuthenticatedRequest,
@@ -67,6 +78,7 @@ export class ReservaController {
   }
 
   @Get('disponibilidad/:idCancha/:fecha')
+  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
   findDisponibilidad(
     @Param('idCancha', ParseIntPipe) idCancha: number,
     @Param('fecha') fecha: string,

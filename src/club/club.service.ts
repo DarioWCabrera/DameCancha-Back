@@ -38,7 +38,7 @@ export class ClubService {
     const club = this.clubRepository.create({
       ...data,
       dueno: owner,
-      estado: 'pendiente_aprobacion',
+      estado: 'activo',
     });
     return this.clubRepository.save(club);
   }
@@ -106,7 +106,7 @@ export class ClubService {
       ciudad_club: String(data.ciudad || '').trim(),
       telefono_club: String(data.telefono || '').trim(),
       dueno: user,
-      estado: 'pendiente_aprobacion',
+      estado: 'activo',
     });
     if (!club.nombre_club || !club.direccion_club) {
       throw new BadRequestException('Nombre y dirección del club son obligatorios.');

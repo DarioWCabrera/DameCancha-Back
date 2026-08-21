@@ -104,4 +104,15 @@ export class TorneoController {
   ) {
     return this.torneoService.remove(id, request.user);
   }
+
+  @Delete(':id/eliminar')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('club', 'dueno', 'admin')
+  removePermanently(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: RequestAutenticada,
+  ) {
+    return this.torneoService.removePermanently(id, request.user);
+  }
+
 }

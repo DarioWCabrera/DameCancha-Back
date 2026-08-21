@@ -7,6 +7,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
+  Index,
 } from 'typeorm';
 
 import { Deporte } from '../../deporte/entities/deporte.entity';
@@ -20,15 +21,18 @@ export enum EstadoDisponibilidadJugador {
   ELIMINADA = 'eliminada',
 }
 
+@Index('idx_disp_jugador_filtros', ['estado', 'ciudad', 'fecha_desde', 'fecha_hasta'])
 @Entity('disponibilidad_jugador')
 export class DisponibilidadJugador {
   @PrimaryGeneratedColumn({ name: 'id_disponibilidad' })
   id_disponibilidad!: number;
 
+  @Index('idx_disp_jugador_usuario')
   @ManyToOne(() => User, { nullable: false, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'id_usuario' })
   usuario!: User;
 
+  @Index('idx_disp_jugador_deporte')
   @ManyToOne(() => Deporte, { nullable: false, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'id_deporte' })
   deporte!: Deporte;
@@ -84,13 +88,10 @@ export class DisponibilidadJugador {
   })
   estado!: EstadoDisponibilidadJugador;
 
-  @Column({ name: 'oculta_para_creador', type: 'boolean', default: false })
-  oculta_para_creador!: boolean;
-
-  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;
 
-  @UpdateDateColumn({ name: 'updated_at', type: 'datetime' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updated_at!: Date;
 
   @OneToMany(

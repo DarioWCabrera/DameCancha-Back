@@ -13,7 +13,7 @@ import { User } from './entities/user.entity';
 import { Club } from '../club/entities/club.entity';
 import { Cancha } from '../cancha/entities/cancha.entity';
 import { Deporte } from '../deporte/entities/deporte.entity';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, ILike } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { RegisterOwnerDto } from '../auth/dto/register-owner.dto';
@@ -159,12 +159,10 @@ export class UserService {
 
       const tipo = (createUserDto.tipo_usuario || 'usuario').toString();
 
-      const estado =
-        tipo === 'usuario'
-          ? 'activo'
-          : tipo === 'dueno'
-          ? 'pendiente_aprobacion'
-          : 'activo';
+      // DameCancha no requiere aprobación previa para los clubes.
+      // Usuarios, dueños y administradores se crean activos; el administrador
+      // conserva la posibilidad de inactivar luego una cuenta/club que incumpla reglas.
+      const estado = 'activo';
 
       const passwordHasheada = await this.hashearPassword(
         createUserDto.password_usuario,
@@ -360,7 +358,7 @@ export class UserService {
         provincia_usuario: data.provincia,
         cp_usuario: data.cp,
         tipo_usuario: 'dueno',
-        estado_usuario: 'pendiente_aprobacion',
+        estado_usuario: 'activo',
       });
 
       const savedUser = await queryRunner.manager.save(user);
@@ -376,13 +374,16 @@ export class UserService {
         deportes_club: deportesSeleccionados,
         logo_club: file ? `/uploads/${file.filename}` : undefined,
         dueno: savedUser,
+        estado: 'activo',
       });
 
       const savedClub = await queryRunner.manager.save(club);
 
+      const canchasCreadas: Cancha[] = [];
+
       for (const nombreDeporte of deportesSeleccionados) {
         let deporte = await queryRunner.manager.findOne(Deporte, {
-          where: { nombre_deporte: nombreDeporte },
+          where: { nombre_deporte: ILike(nombreDeporte) },
         });
 
         if (!deporte) {
@@ -407,7 +408,8 @@ export class UserService {
           id_deporte: deporte,
         });
 
-        await queryRunner.manager.save(cancha);
+        const canchaGuardada = await queryRunner.manager.save(cancha);
+        canchasCreadas.push(canchaGuardada);
       }
 
       await queryRunner.commitTransaction();
@@ -415,7 +417,10 @@ export class UserService {
       return {
         message: 'Dueño, club y canchas creados correctamente',
         dueno: this.mapearUsuarioSeguro(savedUser),
-        club: savedClub,
+        club: {
+          ...savedClub,
+          canchas: canchasCreadas,
+        },
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -538,7 +543,25 @@ export class UserService {
       throw new ForbiddenException('La cuenta se encuentra inactiva.');
     }
 
-    if (user.estado_usuario === 'pendiente_aprobacion') {
+    // Desde V4.2 los dueños no requieren aprobación administrativa para ingresar.
+    // Si existe un dueño legado que quedó como pendiente_aprobacion, lo normalizamos
+    // junto con sus clubes pendientes para evitar bloquear cuentas creadas con la regla vieja.
+    if (
+      user.estado_usuario === 'pendiente_aprobacion' &&
+      (user.tipo_usuario === 'dueno' || user.tipo_usuario === 'club')
+    ) {
+      await this.dataSource.transaction(async (manager) => {
+        user.estado_usuario = 'activo';
+        await manager.save(User, user);
+
+        for (const club of user.clubs || []) {
+          if (club.estado === 'pendiente_aprobacion') {
+            club.estado = 'activo';
+            await manager.save(Club, club);
+          }
+        }
+      });
+    } else if (user.estado_usuario === 'pendiente_aprobacion') {
       throw new ForbiddenException(
         'La cuenta todavía se encuentra pendiente de aprobación.',
       );

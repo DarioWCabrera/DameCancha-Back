@@ -4,13 +4,11 @@ import {
   Column,
   CreateDateColumn,
   ManyToOne,
-  OneToMany,
   JoinColumn,
   Index,
 } from 'typeorm';
 import { User } from '../../user/entities/user.entity';
 import { Cancha } from '../../cancha/entities/cancha.entity';
-import { Pago } from '../../pago/entities/pago.entity';
 
 @Index('idx_reserva_fecha_estado_horas', ['fecha', 'estado', 'hora_inicio', 'hora_fin'])
 @Index('idx_reserva_estado_pago', ['estado_pago'])
@@ -20,7 +18,7 @@ export class Reserva {
   id_reserva!: number;
 
   @Column({ name: 'fecha', type: 'date' })
-  fecha!: Date;
+  fecha!: string;
 
   @Column({ name: 'hora_inicio', type: 'time' })
   hora_inicio!: string;
@@ -40,18 +38,15 @@ export class Reserva {
   estado!: string;
 
   /*
-    Estado del pago de la reserva.
-    Se maneja separado del estado de la reserva para permitir:
-    - reserva confirmada con pago pendiente
-    - pago online aprobado
-    - pago presencial en el club
-    - pago rechazado
+    Estado administrativo del cobro.
+    Las reservas nuevas se abonan presencialmente en el club. Los valores
+    históricos se conservan para no perder información de reservas anteriores.
   */
   @Column({
     name: 'estado_pago',
     type: 'enum',
     enum: ['pendiente', 'pagado', 'pago_en_club', 'rechazado'],
-    default: 'pendiente',
+    default: 'pago_en_club',
   })
   estado_pago!: string;
 
@@ -90,7 +85,7 @@ export class Reserva {
 
   @Column({
     name: 'fecha_pago',
-    type: 'datetime',
+    type: 'timestamptz',
     nullable: true,
   })
   fecha_pago!: Date | null;
@@ -105,9 +100,6 @@ export class Reserva {
   @JoinColumn({ name: 'id_cancha' })
   cancha!: Cancha;
 
-  @CreateDateColumn({ name: 'created_at', type: 'datetime' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;
-
-  @OneToMany(() => Pago, (pago) => pago.reserva)
-  pagos!: Pago[];
 }

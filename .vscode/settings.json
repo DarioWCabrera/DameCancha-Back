@@ -1,7 +1,10 @@
 {
-  "window.title": "🔵 BACK END - ${rootName}",
   "workbench.colorCustomizations": {
-    "titleBar.activeBackground": "#11cbec",
-    "titleBar.activeForeground": "#ffffff"
-  }
+    "window.activeBorder": "#1F4EA6",
+    "titleBar.activeBackground": "#1F4EA6",
+    "titleBar.activeForeground": "#FFFFFF",
+    "statusBar.background": "#1F4EA6",
+    "statusBar.foreground": "#FFFFFF"
+  },
+  "window.titleBarStyle": "BACKEND"
 }

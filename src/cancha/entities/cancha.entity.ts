@@ -17,10 +17,23 @@ export class Cancha {
   @Column({ name: 'descripcion_cancha', type: 'text', nullable: true })
   descripcion_cancha!: string;
 
-  @Column({ name: 'precio_por_hora', type: 'decimal', precision: 10, scale: 2, default: 0 })
+  @Column({
+    name: 'precio_por_hora',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? 0,
+      from: (value: string | number | null) => Number(value ?? 0),
+    },
+  })
   precio_por_hora?: number;
 
-  @Column({ name: 'activa', type: 'tinyint', default: 1 })
+  @Column({ name: 'tipo_suelo', type: 'varchar', length: 80, nullable: true })
+  tipo_suelo?: string | null;
+
+  @Column({ name: 'activa', type: 'smallint', default: 1 })
   activa?: number;
 
   @Column({ name: 'direccion_cancha', type: 'varchar', length: 255, nullable: true })
