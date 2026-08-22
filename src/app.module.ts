@@ -19,6 +19,7 @@ import { BancoSuplentesModule } from './banco-suplentes/banco-suplentes.module';
 import { BloqueoCanchaModule } from './bloqueo-cancha/bloqueo-cancha.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
+import { SolicitudBajaModule } from './solicitud-baja/solicitud-baja.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { AppService } from './app.service';
     GeorefModule,
     TorneoModule,
     BancoSuplentesModule,
+    SolicitudBajaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
