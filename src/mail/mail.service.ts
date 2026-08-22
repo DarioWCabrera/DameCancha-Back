@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { MailerService } from '@nestjs-modules/mailer';
+import { Resend } from 'resend';
 import * as path from 'path';
 import * as fs from 'fs';
 import { MailDto } from './dto/create-mail.dto';
@@ -10,10 +10,19 @@ export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly recentMails = new Map<string, number>();
 
-  constructor(
-    private readonly mailerService: MailerService,
-    private readonly configService: ConfigService,
-  ) {}
+  private readonly resend: Resend;
+
+constructor(
+  private readonly configService: ConfigService,
+) {
+  const apiKey = this.configService.get<string>('RESEND_API_KEY');
+
+  if (!apiKey) {
+    throw new Error('Falta configurar RESEND_API_KEY.');
+  }
+
+  this.resend = new Resend(apiKey);
+}
 
   private normalizarSubject(subject: string): string {
     if (subject === '¡Bienvenido a DameCancha!') return 'Bienvenido a DameCancha!';
@@ -102,6 +111,27 @@ export class MailService {
     );
   }
 
+  private async enviarConResend(
+  destinatario: string,
+  subject: string,
+  html: string,
+) {
+  const { data, error } = await this.resend.emails.send({
+    from: this.obtenerRemitente(),
+    to: destinatario,
+    subject,
+    html,
+  });
+
+  if (error) {
+    throw new Error(
+      `Resend rechazó el envío: ${error.message || JSON.stringify(error)}`,
+    );
+  }
+
+  return data;
+}
+
   private crearClaveDuplicado(data: MailDto, subjectNormalizado: string): string {
     return [
       data.email || '',
@@ -180,18 +210,25 @@ export class MailService {
         },
       );
 
-      await this.mailerService.sendMail({
-        to: data.email,
-        from: this.obtenerRemitente(),
-        subject: subjectNormalizado,
-        html: htmlContent,
-      });
+      await this.enviarConResend(
+  data.email,
+  subjectNormalizado,
+  htmlContent,
+);
 
       this.logger.log(`Mail transaccional enviado: ${subjectNormalizado}`);
     } catch (error) {
-      this.logger.error('Error al enviar mail transaccional.', error instanceof Error ? error.stack : undefined);
-      throw error;
-    }
+  const detalle =
+    error instanceof Error
+      ? `${error.name}: ${error.message}`
+      : String(error);
+
+  this.logger.error(
+    `Error al enviar mail transaccional: ${detalle}`,
+  );
+
+  throw error;
+}
   }
 
   async sendPasswordRecoveryCode(data: {
@@ -219,12 +256,11 @@ export class MailService {
         },
       );
 
-      await this.mailerService.sendMail({
-        to: data.email,
-        from: this.obtenerRemitente(),
-        subject,
-        html: htmlContent,
-      });
+      await this.enviarConResend(
+  data.email,
+  subject,
+  htmlContent,
+);
 
       this.logger.log('Código de recuperación enviado.');
     } catch (error) {
