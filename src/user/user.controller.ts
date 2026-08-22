@@ -28,14 +28,24 @@ import { imageUploadOptions } from '../common/uploads/image-upload';
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { RateLimitGuard } from '../common/rate-limit/rate-limit.guard';
 
-
 @Controller('user')
 export class UserController {
   constructor(private readonly userService: UserService) {}
 
+  /*
+    Registro de usuario común.
+
+    Permitimos hasta 10 intentos cada 10 minutos por IP.
+    Esto sigue protegiendo el endpoint frente a abuso,
+    pero evita bloquear durante una hora a alguien que
+    simplemente corrigió un email o DNI ya registrado.
+  */
   @Post()
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 5, windowMs: 60 * 60 * 1000 })
+  @RateLimit({
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  })
   create(@Body() createUserDto: CreateUserDto) {
     return this.userService.create({
       ...createUserDto,
@@ -44,20 +54,40 @@ export class UserController {
     });
   }
 
+  /*
+    Verificación de email.
+
+    Se mantiene en 20 consultas cada 15 minutos.
+  */
   @Post('email')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 20, windowMs: 15 * 60 * 1000 })
+  @RateLimit({
+    limit: 20,
+    windowMs: 15 * 60 * 1000,
+  })
   existsEmail(@Body('email') email: string) {
     return this.userService.existsByEmail(email);
   }
 
+  /*
+    Verificación de DNI.
+
+    Se mantiene en 20 consultas cada 15 minutos.
+  */
   @Post('dni')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 20, windowMs: 15 * 60 * 1000 })
+  @RateLimit({
+    limit: 20,
+    windowMs: 15 * 60 * 1000,
+  })
   existsDni(@Body('dni') dni: string) {
     return this.userService.existsByDni(dni);
   }
 
+  /*
+    Creación de administradores.
+    Solo puede hacerlo un administrador autenticado.
+  */
   @Post('create-admin')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
@@ -69,22 +99,52 @@ export class UserController {
     });
   }
 
+  /*
+    Login.
+
+    Se mantiene más estricto:
+    máximo 10 intentos cada 10 minutos.
+  */
   @Post('login')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 10, windowMs: 10 * 60 * 1000 })
+  @RateLimit({
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  })
   login(@Body() body: LoginDto) {
-    return this.userService.login(body.email, body.password);
+    return this.userService.login(
+      body.email,
+      body.password,
+    );
   }
 
+  /*
+    Registro de dueño + club.
+
+    Antes estaba limitado a solo 3 intentos por hora.
+    Lo dejamos igual que el registro de usuario:
+    10 intentos cada 10 minutos.
+  */
   @Post('register')
   @UseGuards(RateLimitGuard)
-  @RateLimit({ limit: 3, windowMs: 60 * 60 * 1000 })
-  @UseInterceptors(FileInterceptor('logo', imageUploadOptions('', 2)))
+  @RateLimit({
+    limit: 10,
+    windowMs: 10 * 60 * 1000,
+  })
+  @UseInterceptors(
+    FileInterceptor(
+      'logo',
+      imageUploadOptions('', 2),
+    ),
+  )
   createWithClub(
     @Body() body: RegisterOwnerDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    return this.userService.createWithClub(body, file);
+    return this.userService.createWithClub(
+      body,
+      file,
+    );
   }
 
   @Get('count')
@@ -92,6 +152,10 @@ export class UserController {
     return this.userService.countRegisteredUsers();
   }
 
+  /*
+    Listado completo de usuarios.
+    Solo administrador.
+  */
   @Get()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
@@ -99,18 +163,32 @@ export class UserController {
     return this.userService.findAll();
   }
 
+  /*
+    Un usuario solo puede consultar su propio perfil.
+    El admin puede consultar cualquiera.
+  */
   @Get(':id')
   @UseGuards(AuthGuard)
   findOne(
     @Param('id', ParseIntPipe) id: number,
     @Req() request: AuthenticatedRequest,
   ) {
-    if (request.user.tipo !== 'admin' && Number(request.user.sub) !== id) {
-      throw new ForbiddenException('No tenés permiso para consultar este usuario.');
+    if (
+      request.user.tipo !== 'admin' &&
+      Number(request.user.sub) !== id
+    ) {
+      throw new ForbiddenException(
+        'No tenés permiso para consultar este usuario.',
+      );
     }
+
     return this.userService.findOne(id);
   }
 
+  /*
+    Un usuario solo puede modificar su propio perfil.
+    El admin puede modificar cualquiera.
+  */
   @Patch(':id')
   @UseGuards(AuthGuard)
   update(
@@ -118,16 +196,31 @@ export class UserController {
     @Body() updateUserDto: UpdateUserDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    if (request.user.tipo !== 'admin' && Number(request.user.sub) !== id) {
-      throw new ForbiddenException('No tenés permiso para modificar este usuario.');
+    if (
+      request.user.tipo !== 'admin' &&
+      Number(request.user.sub) !== id
+    ) {
+      throw new ForbiddenException(
+        'No tenés permiso para modificar este usuario.',
+      );
     }
-    return this.userService.update(id, updateUserDto);
+
+    return this.userService.update(
+      id,
+      updateUserDto,
+    );
   }
 
+  /*
+    Eliminación de usuarios.
+    Solo administrador.
+  */
   @Delete(':id')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
-  remove(@Param('id', ParseIntPipe) id: number) {
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.userService.remove(id);
   }
 }
