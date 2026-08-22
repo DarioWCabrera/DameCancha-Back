@@ -1,6 +1,7 @@
 {
   "name": "damecancha-backend",
   "version": "0.0.1",
+  "packageManager": "npm@10.9.8",
   "description": "",
   "author": "",
   "private": true,
