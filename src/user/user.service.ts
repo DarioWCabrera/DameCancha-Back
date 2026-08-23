@@ -240,6 +240,56 @@ export class UserService {
     return { exists };
   }
 
+  async changeOwnPassword(
+  id: number,
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string,
+) {
+  const user = await this.userRepository.findOne({
+    where: { id_usuario: id },
+  });
+
+  if (!user) {
+    throw new NotFoundException('Usuario no encontrado.');
+  }
+
+  const currentPasswordValida =
+    await this.validarPasswordYMigrarSiHaceFalta(
+      user,
+      currentPassword,
+    );
+
+  if (!currentPasswordValida) {
+    throw new BadRequestException(
+      'La contraseña actual es incorrecta.',
+    );
+  }
+
+  if (newPassword !== confirmPassword) {
+    throw new BadRequestException(
+      'Las nuevas contraseñas no coinciden.',
+    );
+  }
+
+  if (currentPassword === newPassword) {
+    throw new BadRequestException(
+      'La nueva contraseña debe ser diferente a la actual.',
+    );
+  }
+
+  this.validarPoliticaPassword(newPassword);
+
+  user.password_usuario =
+    await this.hashearPassword(newPassword);
+
+  await this.userRepository.save(user);
+
+  return {
+    message: 'Contraseña actualizada correctamente.',
+  };
+}
+
   async update(id: number, updateUserDto: UpdateUserDto) {
     const current = await this.userRepository.findOne({
       where: { id_usuario: id },

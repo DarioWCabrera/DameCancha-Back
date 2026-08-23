@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MailerModule } from '@nestjs-modules/mailer';
 
 import { validateEnvironment } from './config/env.validation';
 import { createDatabaseOptions } from './config/database.config';
@@ -31,26 +30,6 @@ import { SolicitudBajaModule } from './solicitud-baja/solicitud-baja.module';
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => createDatabaseOptions(config),
-    }),
-    MailerModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        transport: {
-          host: config.get<string>('MAIL_HOST'),
-          port: Number(config.get<string>('MAIL_PORT') || 587),
-          secure: config.get<string>('MAIL_SECURE') === 'true',
-          auth:
-            config.get<string>('MAIL_USER') && config.get<string>('MAIL_PASS')
-              ? {
-                  user: config.get<string>('MAIL_USER'),
-                  pass: config.get<string>('MAIL_PASS'),
-                }
-              : undefined,
-        },
-        defaults: {
-          from: config.get<string>('MAIL_FROM'),
-        },
-      }),
     }),
     AuthModule,
     UserModule,

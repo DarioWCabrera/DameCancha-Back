@@ -33,7 +33,7 @@ import { imageUploadOptions } from '../common/uploads/image-upload';
 
 import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { RateLimitGuard } from '../common/rate-limit/rate-limit.guard';
-
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { RecaptchaService } from '../common/recaptcha/recaptcha.service';
 
 @Controller('user')
@@ -41,7 +41,7 @@ export class UserController {
   constructor(
     private readonly userService: UserService,
     private readonly recaptchaService: RecaptchaService,
-  ) {}
+  ) { }
 
   /**
    * Registro de usuario común.
@@ -180,32 +180,32 @@ export class UserController {
     ),
   )
   async createWithClub(
-  @Body() body: RegisterOwnerDto,
-  @UploadedFile() file?: Express.Multer.File,
-) {
-  const recaptchaValido =
-    await this.recaptchaService.verify(
-      body.recaptchaToken || '',
-    );
+    @Body() body: RegisterOwnerDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    const recaptchaValido =
+      await this.recaptchaService.verify(
+        body.recaptchaToken || '',
+      );
 
-  if (!recaptchaValido) {
-    throw new BadRequestException(
-      'No se pudo validar reCAPTCHA. Intentá nuevamente.',
+    if (!recaptchaValido) {
+      throw new BadRequestException(
+        'No se pudo validar reCAPTCHA. Intentá nuevamente.',
+      );
+    }
+
+    // El token solamente sirve para verificar el CAPTCHA.
+    // No debe llegar al service ni guardarse en la base.
+    const {
+      recaptchaToken,
+      ...datosRegistro
+    } = body;
+
+    return this.userService.createWithClub(
+      datosRegistro,
+      file,
     );
   }
-
-  // El token solamente sirve para verificar el CAPTCHA.
-  // No debe llegar al service ni guardarse en la base.
-  const {
-    recaptchaToken,
-    ...datosRegistro
-  } = body;
-
-  return this.userService.createWithClub(
-    datosRegistro,
-    file,
-  );
-}
 
   @Get('count')
   countRegisteredUsers() {
@@ -244,6 +244,24 @@ export class UserController {
     }
 
     return this.userService.findOne(id);
+  }
+
+  /**
+    * El admin puede cambiar su contraseña.
+   */
+
+  @Patch('me/password')
+  @UseGuards(AuthGuard)
+  async changeOwnPassword(
+    @Body() body: ChangePasswordDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.userService.changeOwnPassword(
+      Number(request.user.sub),
+      body.currentPassword,
+      body.newPassword,
+      body.confirmPassword,
+    );
   }
 
   /**
