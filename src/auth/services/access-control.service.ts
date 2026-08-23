@@ -23,6 +23,18 @@ export class AccessControlService {
     return user.tipo === 'admin';
   }
 
+  private assertClubActivo(club?: Club | null) {
+    if (!club) {
+      throw new NotFoundException('Club no encontrado.');
+    }
+
+    if (club.estado !== 'activo') {
+      throw new ForbiddenException(
+        'El club se encuentra inactivo y no puede operar.',
+      );
+    }
+  }
+
   assertSelfOrAdmin(user: AuthenticatedUser, userId: number) {
     if (!this.isAdmin(user) && Number(user.sub) !== Number(userId)) {
       throw new ForbiddenException('No tenés permiso para acceder a este usuario.');
@@ -36,10 +48,14 @@ export class AccessControlService {
       where: { id_club: clubId },
       relations: ['dueno'],
     });
+
     if (!club) throw new NotFoundException('Club no encontrado.');
+
     if (Number(club.dueno?.id_usuario) !== Number(user.sub)) {
       throw new ForbiddenException('No tenés permiso para administrar este club.');
     }
+
+    this.assertClubActivo(club);
   }
 
   async assertCanManageCancha(user: AuthenticatedUser, canchaId: number) {
@@ -49,37 +65,54 @@ export class AccessControlService {
       where: { id_cancha: canchaId },
       relations: ['id_club', 'id_club.dueno'],
     });
+
     if (!cancha) throw new NotFoundException('Cancha no encontrada.');
+
     if (Number(cancha.id_club?.dueno?.id_usuario) !== Number(user.sub)) {
       throw new ForbiddenException('No tenés permiso para administrar esta cancha.');
     }
+
+    this.assertClubActivo(cancha.id_club);
   }
 
   async assertCanManageDisponibilidad(user: AuthenticatedUser, disponibilidadId: number) {
     if (this.isAdmin(user)) return;
+
     const item = await this.disponibilidadRepository.findOne({
       where: { id_disponibilidad: disponibilidadId },
       relations: ['cancha', 'cancha.id_club', 'cancha.id_club.dueno'],
     });
+
     if (!item) throw new NotFoundException('Disponibilidad no encontrada.');
+
     if (Number(item.cancha?.id_club?.dueno?.id_usuario) !== Number(user.sub)) {
       throw new ForbiddenException('No tenés permiso para administrar esta disponibilidad.');
     }
+
+    this.assertClubActivo(item.cancha?.id_club);
   }
 
   async assertCanAccessReserva(user: AuthenticatedUser, reservaId: number) {
     if (this.isAdmin(user)) return;
+
     const reserva = await this.reservaRepository.findOne({
       where: { id_reserva: reservaId },
       relations: ['usuario', 'cancha', 'cancha.id_club', 'cancha.id_club.dueno'],
     });
+
     if (!reserva) throw new NotFoundException('Reserva no encontrada.');
 
     const isOwner = Number(reserva.usuario?.id_usuario) === Number(user.sub);
     const isClubOwner = Number(reserva.cancha?.id_club?.dueno?.id_usuario) === Number(user.sub);
-    if (!isOwner && !isClubOwner) {
-      throw new ForbiddenException('No tenés permiso para acceder a esta reserva.');
+
+    if (isOwner) return;
+
+    if (isClubOwner) {
+      this.assertClubActivo(reserva.cancha?.id_club);
+      return;
     }
+
+    throw new ForbiddenException('No tenés permiso para acceder a esta reserva.');
   }
 
   async assertCanReadReservationsForClub(user: AuthenticatedUser, clubId: number) {
@@ -88,13 +121,18 @@ export class AccessControlService {
 
   async assertCanManageTorneo(user: AuthenticatedUser, torneoId: number) {
     if (this.isAdmin(user)) return;
+
     const torneo = await this.torneoRepository.findOne({
       where: { id_torneo: torneoId },
       relations: ['club', 'club.dueno'],
     });
+
     if (!torneo) throw new NotFoundException('Torneo no encontrado.');
+
     if (Number(torneo.club?.dueno?.id_usuario) !== Number(user.sub)) {
       throw new ForbiddenException('No tenés permiso para administrar este torneo.');
     }
+
+    this.assertClubActivo(torneo.club);
   }
 }

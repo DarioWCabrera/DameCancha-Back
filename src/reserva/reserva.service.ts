@@ -96,18 +96,55 @@ export class ReservaService {
     return hours * 60 + minutes;
   }
 
-  private validarRango(fecha: Date | string, horaInicio: string, horaFin: string) {
-    const start = this.minutos(horaInicio);
-    const end = this.minutos(horaFin);
-    if (start >= end) {
-      throw new BadRequestException('La hora de inicio debe ser anterior a la hora final.');
-    }
+  private validarRango(
+  fecha: Date | string,
+  horaInicio: string,
+  horaFin: string,
+) {
+  const start = this.minutos(horaInicio);
+  const end = this.minutos(horaFin);
 
-    const date = String(fecha).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      throw new BadRequestException('La fecha debe tener formato YYYY-MM-DD.');
-    }
+  if (start >= end) {
+    throw new BadRequestException(
+      'La hora de inicio debe ser anterior a la hora final.',
+    );
   }
+
+  const date = String(fecha).slice(0, 10);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new BadRequestException(
+      'La fecha debe tener formato YYYY-MM-DD.',
+    );
+  }
+
+  /*
+    Seguridad de producción:
+    nunca permitimos crear o mover una reserva
+    a una fecha/hora que ya pasó.
+
+    Usamos el huso horario configurado de DameCancha
+    para no depender del timezone interno de Railway.
+  */
+  const offset =
+    this.configService.get<string>('APP_TIMEZONE_OFFSET') || '-03:00';
+
+  const inicioReserva = new Date(
+    `${date}T${this.normalizarHora(horaInicio)}${offset}`,
+  );
+
+  if (Number.isNaN(inicioReserva.getTime())) {
+    throw new BadRequestException(
+      'La fecha u hora de la reserva no es válida.',
+    );
+  }
+
+  if (inicioReserva.getTime() <= Date.now()) {
+    throw new BadRequestException(
+      'No se puede reservar una fecha u horario que ya pasó.',
+    );
+  }
+}
 
   private calcularMonto(cancha: Cancha, horaInicio: string, horaFin: string): number {
     const minutes = this.minutos(horaFin) - this.minutos(horaInicio);
@@ -160,6 +197,86 @@ export class ReservaService {
       .getOne();
   }
 
+  private async validarDisponibilidadCancha(
+  manager: EntityManager,
+  idCancha: number,
+  fecha: string,
+  horaInicio: string,
+  horaFin: string,
+) {
+  /*
+    Calculamos el día de semana sin depender del timezone
+    del servidor.
+    0 = domingo ... 6 = sábado.
+  */
+  const [anio, mes, dia] = fecha.split('-').map(Number);
+
+  const diaSemana = new Date(
+    Date.UTC(anio, mes - 1, dia),
+  ).getUTCDay();
+
+  /*
+    Leemos la configuración REAL de horarios de la cancha.
+  */
+  const disponibilidades: Array<{
+    dia_semana: number | string;
+    hora_inicio: string;
+    hora_fin: string;
+  }> = await manager.query(
+    `
+      SELECT dia_semana, hora_inicio, hora_fin
+      FROM disponibilidad
+      WHERE id_cancha = $1
+    `,
+    [idCancha],
+  );
+
+  /*
+    DameCancha actualmente interpreta una cancha sin
+    configuración como disponible en los horarios generales
+    del sistema: 09:00 a 22:00, en bloques de una hora.
+
+    Mantenemos exactamente ese comportamiento también
+    en backend para no romper canchas existentes.
+  */
+  if (disponibilidades.length === 0) {
+    const inicio = this.minutos(horaInicio);
+    const fin = this.minutos(horaFin);
+
+    const horarioPredeterminadoValido =
+      inicio >= 9 * 60 &&
+      inicio <= 22 * 60 &&
+      inicio % 60 === 0 &&
+      fin === inicio + 60;
+
+    if (!horarioPredeterminadoValido) {
+      throw new BadRequestException(
+        'El horario solicitado no está disponible para esta cancha.',
+      );
+    }
+
+    return;
+  }
+
+  /*
+    Si el dueño configuró horarios, el turno solicitado
+    debe coincidir exactamente con uno de ellos para ese día.
+  */
+  const horarioPermitido = disponibilidades.some((disponibilidad) => {
+    return (
+      Number(disponibilidad.dia_semana) === diaSemana &&
+      this.normalizarHora(disponibilidad.hora_inicio) === horaInicio &&
+      this.normalizarHora(disponibilidad.hora_fin) === horaFin
+    );
+  });
+
+  if (!horarioPermitido) {
+    throw new BadRequestException(
+      'El horario solicitado no está habilitado por el club para esta cancha.',
+    );
+  }
+}
+
   async assertUserCanModify(id: number) {
     const reserva = await this.reservaRepository.findOne({
       where: { id_reserva: id },
@@ -196,12 +313,26 @@ export class ReservaService {
       const cancha = await manager
         .getRepository(Cancha)
         .createQueryBuilder('cancha')
+        .innerJoin('cancha.id_club', 'club')
         .where('cancha.id_cancha = :idCancha', { idCancha: createReservaDto.id_cancha })
         .andWhere('cancha.activa = 1')
+        .andWhere('club.estado = :estadoClub', { estadoClub: 'activo' })
         .setLock('pessimistic_write')
         .getOne();
 
-      if (!cancha) throw new NotFoundException('Cancha no encontrada o inactiva.');
+      if (!cancha) {
+        throw new NotFoundException(
+          'Cancha no encontrada, inactiva o perteneciente a un club inactivo.',
+        );
+      }
+
+      await this.validarDisponibilidadCancha(
+  manager,
+  createReservaDto.id_cancha,
+  fecha,
+  horaInicio,
+  horaFin,
+);
 
       const reservaExistente = await this.buscarReservaSolapada(manager, {
         idCancha: createReservaDto.id_cancha,
@@ -341,10 +472,26 @@ export class ReservaService {
         const cancha = await manager
         .getRepository(Cancha)
         .createQueryBuilder('cancha')
+        .innerJoin('cancha.id_club', 'club')
         .where('cancha.id_cancha = :idCancha', { idCancha })
+        .andWhere('cancha.activa = 1')
+        .andWhere('club.estado = :estadoClub', { estadoClub: 'activo' })
         .setLock('pessimistic_write')
         .getOne();
-      if (!cancha) throw new NotFoundException('Cancha no encontrada.');
+
+      if (!cancha) {
+        throw new NotFoundException(
+          'Cancha no encontrada, inactiva o perteneciente a un club inactivo.',
+        );
+      }
+
+      await this.validarDisponibilidadCancha(
+        manager,
+        idCancha,
+        fecha,
+        horaInicio,
+        horaFin,
+      );
 
       const overlap = await this.buscarReservaSolapada(manager, {
         idCancha,

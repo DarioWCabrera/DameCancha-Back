@@ -1,4 +1,5 @@
 import { Transform } from 'class-transformer';
+
 import {
   IsEmail,
   IsOptional,
@@ -8,7 +9,8 @@ import {
   MinLength,
 } from 'class-validator';
 
-const trim = ({ value }: { value: unknown }) => String(value ?? '').trim();
+const trim = ({ value }: { value: unknown }) =>
+  String(value ?? '').trim();
 
 export class RegisterOwnerDto {
   @Transform(trim)
@@ -23,15 +25,21 @@ export class RegisterOwnerDto {
   @MaxLength(100)
   apellido!: string;
 
-  @Transform(({ value }) => String(value ?? '').trim().toLowerCase())
+  @Transform(({ value }) =>
+    String(value ?? '').trim().toLowerCase(),
+  )
   @IsEmail()
   @MaxLength(150)
   email!: string;
 
   @IsString()
-  @Matches(/^(?=.*[A-Za-zÁÉÍÓÚáéíóúÑñ])(?=.*\d).{8,128}$/, {
-    message: 'La contraseña debe tener entre 8 y 128 caracteres, incluir una letra y un número.',
-  })
+  @Matches(
+    /^(?=.*[A-Za-zÁÉÍÓÚáéíóúÑñ])(?=.*\d).{8,128}$/,
+    {
+      message:
+        'La contraseña debe tener entre 8 y 128 caracteres, incluir una letra y un número.',
+    },
+  )
   password!: string;
 
   @Transform(trim)
@@ -48,7 +56,9 @@ export class RegisterOwnerDto {
 
   @Transform(trim)
   @IsString()
-  @Matches(/^\d{2}-?\d{8}-?\d$/, { message: 'CUIT inválido.' })
+  @Matches(/^\d{2}-?\d{8}-?\d$/, {
+    message: 'CUIT inválido.',
+  })
   CUIT!: string;
 
   @Transform(trim)
@@ -88,4 +98,14 @@ export class RegisterOwnerDto {
   @IsString()
   @MaxLength(20)
   DNI?: string;
+
+  /**
+   * Token generado por Google reCAPTCHA.
+   * Se valida en el controller y nunca se guarda
+   * en la base de datos.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  recaptchaToken?: string;
 }

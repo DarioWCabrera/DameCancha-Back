@@ -231,6 +231,143 @@ constructor(
 }
   }
 
+async sendNewClubRequestToAdmins(
+  adminEmails: string[],
+  data: {
+    club: string;
+    nombre: string;
+    email: string;
+    telefono?: string;
+    ciudad?: string;
+    provincia?: string;
+  },
+) {
+  if (!adminEmails.length) {
+    this.logger.warn(
+      'Se registró un club pendiente pero no hay administradores activos para notificar.',
+    );
+    return;
+  }
+
+  const subject = 'Nueva solicitud de club - DameCancha';
+
+  const frontendUrl = (
+    this.configService.get<string>('FRONTEND_URL') ||
+    'http://localhost:5173'
+  ).replace(/\/$/, '');
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#1f2937;">
+      <div style="background:#1f4ea6;padding:24px;text-align:center;">
+        <h1 style="color:#ffffff;margin:0;font-size:26px;">
+          DameCancha
+        </h1>
+      </div>
+
+      <div style="padding:28px;border:1px solid #e5e7eb;">
+        <h2 style="margin-top:0;color:#1f4ea6;">
+          Nueva solicitud de club
+        </h2>
+
+        <p>
+          Se recibió una nueva solicitud de alta de un club en DameCancha.
+        </p>
+
+        <table style="width:100%;border-collapse:collapse;margin:24px 0;">
+          <tr>
+            <td style="padding:8px 0;font-weight:bold;">Club:</td>
+            <td style="padding:8px 0;">
+              ${this.escapeHtml(data.club)}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 0;font-weight:bold;">Responsable:</td>
+            <td style="padding:8px 0;">
+              ${this.escapeHtml(data.nombre)}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 0;font-weight:bold;">Email:</td>
+            <td style="padding:8px 0;">
+              ${this.escapeHtml(data.email)}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 0;font-weight:bold;">Teléfono:</td>
+            <td style="padding:8px 0;">
+              ${this.escapeHtml(data.telefono || '-')}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 0;font-weight:bold;">Ciudad:</td>
+            <td style="padding:8px 0;">
+              ${this.escapeHtml(data.ciudad || '-')}
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 0;font-weight:bold;">Provincia:</td>
+            <td style="padding:8px 0;">
+              ${this.escapeHtml(data.provincia || '-')}
+            </td>
+          </tr>
+        </table>
+
+        <p>
+          La solicitud quedó
+          <strong>pendiente de aprobación</strong>.
+        </p>
+
+        <div style="text-align:center;margin-top:28px;">
+          <a
+            href="${frontendUrl}"
+            style="
+              display:inline-block;
+              background:#1f4ea6;
+              color:#ffffff;
+              text-decoration:none;
+              padding:12px 22px;
+              border-radius:8px;
+              font-weight:bold;
+            "
+          >
+            Ir a DameCancha
+          </a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const resultados = await Promise.allSettled(
+    adminEmails.map((email) =>
+      this.enviarConResend(
+        email,
+        subject,
+        html,
+      ),
+    ),
+  );
+
+  const fallidos = resultados.filter(
+    (resultado) => resultado.status === 'rejected',
+  );
+
+  if (fallidos.length) {
+    this.logger.warn(
+      `No se pudieron enviar ${fallidos.length} notificaciones de solicitud de club.`,
+    );
+  }
+
+  this.logger.log(
+    `Solicitud de club notificada a ${adminEmails.length - fallidos.length} administrador/es.`,
+  );
+}
+
+
   async sendPasswordRecoveryCode(data: {
     email: string;
     nombre: string;

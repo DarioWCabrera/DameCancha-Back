@@ -85,4 +85,8 @@ export class CreateUserDto {
 
   @IsOptional()
   canchas_dueno?: unknown[];
+
+  @IsOptional()
+@IsString()
+recaptchaToken?: string;
 }

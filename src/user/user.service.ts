@@ -18,6 +18,8 @@ import { ConfigService } from '@nestjs/config';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { RegisterOwnerDto } from '../auth/dto/register-owner.dto';
 import { unlink } from 'fs/promises';
+import { MailService } from '../mail/mail.service';
+
 
 @Injectable()
 export class UserService {
@@ -32,7 +34,8 @@ export class UserService {
 
     private dataSource: DataSource,
     private readonly configService: ConfigService,
-  ) {}
+    private readonly mailService: MailService,
+  ) { }
 
   private normalizarEmail(email: string): string {
     return String(email || '').trim().toLowerCase();
@@ -358,7 +361,7 @@ export class UserService {
         provincia_usuario: data.provincia,
         cp_usuario: data.cp,
         tipo_usuario: 'dueno',
-        estado_usuario: 'activo',
+        estado_usuario: 'pendiente_aprobacion',
       });
 
       const savedUser = await queryRunner.manager.save(user);
@@ -374,7 +377,7 @@ export class UserService {
         deportes_club: deportesSeleccionados,
         logo_club: file ? `/uploads/${file.filename}` : undefined,
         dueno: savedUser,
-        estado: 'activo',
+        estado: 'pendiente_aprobacion',
       });
 
       const savedClub = await queryRunner.manager.save(club);
@@ -413,6 +416,39 @@ export class UserService {
       }
 
       await queryRunner.commitTransaction();
+
+      try {
+        const admins = await this.userRepository.find({
+          where: {
+            tipo_usuario: 'admin',
+            estado_usuario: 'activo',
+          },
+        });
+
+        const adminEmails = admins
+          .map((admin) => admin.email_usuario)
+          .filter(
+            (email): email is string =>
+              Boolean(email),
+          );
+
+        await this.mailService.sendNewClubRequestToAdmins(
+          adminEmails,
+          {
+            club: savedClub.nombre_club,
+            nombre: `${savedUser.nombre_usuario} ${savedUser.apellido_usuario}`,
+            email: savedUser.email_usuario,
+            telefono: savedUser.telefono_usuario || undefined,
+            ciudad: savedClub.ciudad_club || undefined,
+            provincia: savedClub.provincia_club || undefined,
+          },
+        );
+      } catch (mailError) {
+        console.error(
+          'El club quedó registrado, pero no se pudo notificar a los administradores:',
+          mailError,
+        );
+      }
 
       return {
         message: 'Dueño, club y canchas creados correctamente',
@@ -543,31 +579,22 @@ export class UserService {
       throw new ForbiddenException('La cuenta se encuentra inactiva.');
     }
 
-    // Desde V4.2 los dueños no requieren aprobación administrativa para ingresar.
-    // Si existe un dueño legado que quedó como pendiente_aprobacion, lo normalizamos
-    // junto con sus clubes pendientes para evitar bloquear cuentas creadas con la regla vieja.
-    if (
-      user.estado_usuario === 'pendiente_aprobacion' &&
-      (user.tipo_usuario === 'dueno' || user.tipo_usuario === 'club')
-    ) {
-      await this.dataSource.transaction(async (manager) => {
-        user.estado_usuario = 'activo';
-        await manager.save(User, user);
-
-        for (const club of user.clubs || []) {
-          if (club.estado === 'pendiente_aprobacion') {
-            club.estado = 'activo';
-            await manager.save(Club, club);
-          }
-        }
-      });
-    } else if (user.estado_usuario === 'pendiente_aprobacion') {
+    if (user.estado_usuario === 'pendiente_aprobacion') {
       throw new ForbiddenException(
-        'La cuenta todavía se encuentra pendiente de aprobación.',
+        'Tu club todavía se encuentra pendiente de aprobación por el administrador de DameCancha.',
       );
     }
 
     const clubPrincipal = user.clubs?.[0] || null;
+
+    if (
+      (user.tipo_usuario === 'dueno' || user.tipo_usuario === 'club') &&
+      (!clubPrincipal || clubPrincipal.estado !== 'activo')
+    ) {
+      throw new ForbiddenException(
+        'El club se encuentra inactivo y no puede operar.',
+      );
+    }
 
     return {
       message: 'Login exitoso',
