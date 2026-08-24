@@ -368,6 +368,255 @@ async sendNewClubRequestToAdmins(
 }
 
 
+
+  async sendReservationEventToOwner(data: {
+    email: string;
+    ownerName?: string;
+    action: 'creada' | 'modificada' | 'cancelada';
+    reservationId: number;
+    userName: string;
+    userEmail?: string;
+    userPhone?: string;
+    club: string;
+    cancha: string;
+    fecha: string;
+    hora: string;
+    previous?: {
+      club?: string;
+      cancha?: string;
+      fecha?: string;
+      hora?: string;
+    };
+    motivo?: string;
+  }) {
+    const subjectByAction = {
+      creada: 'Nueva reserva - DameCancha',
+      modificada: 'Reserva modificada - DameCancha',
+      cancelada: 'Reserva cancelada - DameCancha',
+    } as const;
+
+    const titleByAction = {
+      creada: 'Nueva reserva',
+      modificada: 'Reserva modificada',
+      cancelada: 'Reserva cancelada',
+    } as const;
+
+    const claveDuplicado = [
+      data.email,
+      'owner-reservation-event',
+      data.action,
+      data.reservationId,
+      data.fecha,
+      data.hora,
+    ].join('|');
+
+    if (this.esMailDuplicado(claveDuplicado)) {
+      this.logger.warn(
+        `Mail duplicado bloqueado para evento de reserva ${data.reservationId}.`,
+      );
+      return;
+    }
+
+    const frontendUrl = (
+      this.configService.get<string>('FRONTEND_URL') ||
+      'http://localhost:5173'
+    ).replace(/\/$/, '');
+
+    const anterior = data.previous
+      ? `
+        <div style="background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin:20px 0;">
+          <div style="font-weight:bold;margin-bottom:8px;">Datos anteriores</div>
+          <div><strong>Club:</strong> ${this.escapeHtml(data.previous.club || '-')}</div>
+          <div><strong>Cancha:</strong> ${this.escapeHtml(data.previous.cancha || '-')}</div>
+          <div><strong>Fecha:</strong> ${this.escapeHtml(data.previous.fecha || '-')}</div>
+          <div><strong>Horario:</strong> ${this.escapeHtml(data.previous.hora || '-')}</div>
+        </div>
+      `
+      : '';
+
+    const motivo = data.motivo
+      ? `
+        <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px;margin:20px 0;">
+          <strong>Motivo:</strong> ${this.escapeHtml(data.motivo)}
+        </div>
+      `
+      : '';
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#1f2937;">
+        <div style="background:#1f4ea6;padding:24px;text-align:center;">
+          <h1 style="color:#ffffff;margin:0;font-size:26px;">DameCancha</h1>
+        </div>
+
+        <div style="padding:28px;border:1px solid #e5e7eb;">
+          <h2 style="margin-top:0;color:#1f4ea6;">
+            ${titleByAction[data.action]}
+          </h2>
+
+          <p>
+            Hola ${this.escapeHtml(data.ownerName || '')}.
+            Hubo un movimiento en las reservas de
+            <strong>${this.escapeHtml(data.club)}</strong>.
+          </p>
+
+          ${anterior}
+
+          <table style="width:100%;border-collapse:collapse;margin:24px 0;">
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Reserva:</td>
+              <td style="padding:8px 0;">#${this.escapeHtml(data.reservationId)}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Usuario:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.userName)}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Email:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.userEmail || '-')}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Teléfono:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.userPhone || '-')}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Cancha:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.cancha)}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Fecha:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.fecha)}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Horario:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.hora)}</td>
+            </tr>
+          </table>
+
+          ${motivo}
+
+          <div style="text-align:center;margin-top:28px;">
+            <a
+              href="${frontendUrl}"
+              style="display:inline-block;background:#1f4ea6;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;"
+            >
+              Ir a DameCancha
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+
+    await this.enviarConResend(
+      data.email,
+      subjectByAction[data.action],
+      html,
+    );
+
+    this.logger.log(
+      `${titleByAction[data.action]} notificada al dueño del club.`,
+    );
+  }
+
+  async sendReservationCancelledByClubToUser(data: {
+    email: string;
+    nombre: string;
+    reservationId: number;
+    club: string;
+    cancha: string;
+    fecha: string;
+    hora: string;
+    motivo: string;
+  }) {
+    const subject = 'Tu reserva fue cancelada por el club - DameCancha';
+
+    const claveDuplicado = [
+      data.email,
+      'club-cancellation',
+      data.reservationId,
+      data.fecha,
+      data.hora,
+    ].join('|');
+
+    if (this.esMailDuplicado(claveDuplicado)) {
+      this.logger.warn(
+        `Mail duplicado bloqueado para cancelación de reserva ${data.reservationId}.`,
+      );
+      return;
+    }
+
+    const frontendUrl = (
+      this.configService.get<string>('FRONTEND_URL') ||
+      'http://localhost:5173'
+    ).replace(/\/$/, '');
+
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;color:#1f2937;">
+        <div style="background:#1f4ea6;padding:24px;text-align:center;">
+          <h1 style="color:#ffffff;margin:0;font-size:26px;">DameCancha</h1>
+        </div>
+
+        <div style="padding:28px;border:1px solid #e5e7eb;">
+          <h2 style="margin-top:0;color:#1f4ea6;">
+            Tu reserva fue cancelada por el club
+          </h2>
+
+          <p>
+            Hola ${this.escapeHtml(data.nombre)}.
+            <strong>${this.escapeHtml(data.club)}</strong>
+            canceló tu reserva.
+          </p>
+
+          <table style="width:100%;border-collapse:collapse;margin:24px 0;">
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Reserva:</td>
+              <td style="padding:8px 0;">#${this.escapeHtml(data.reservationId)}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Cancha:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.cancha)}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Fecha:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.fecha)}</td>
+            </tr>
+            <tr>
+              <td style="padding:8px 0;font-weight:bold;">Horario:</td>
+              <td style="padding:8px 0;">${this.escapeHtml(data.hora)}</td>
+            </tr>
+          </table>
+
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:16px;margin:20px 0;">
+            <strong>Motivo informado por el club:</strong><br />
+            ${this.escapeHtml(data.motivo)}
+          </div>
+
+          <p>
+            El turno quedó liberado y ya no figura como una reserva activa.
+          </p>
+
+          <div style="text-align:center;margin-top:28px;">
+            <a
+              href="${frontendUrl}"
+              style="display:inline-block;background:#1f4ea6;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:bold;"
+            >
+              Ir a DameCancha
+            </a>
+          </div>
+        </div>
+      </div>
+    `;
+
+    await this.enviarConResend(
+      data.email,
+      subject,
+      html,
+    );
+
+    this.logger.log(
+      `Cancelación de reserva ${data.reservationId} notificada al usuario.`,
+    );
+  }
+
   async sendPasswordRecoveryCode(data: {
     email: string;
     nombre: string;

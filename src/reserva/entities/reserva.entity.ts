@@ -90,6 +90,36 @@ export class Reserva {
   })
   fecha_pago!: Date | null;
 
+
+  @Column({
+    name: 'motivo_cancelacion',
+    type: 'text',
+    nullable: true,
+  })
+  motivo_cancelacion!: string | null;
+
+  @Column({
+    name: 'cancelado_por_tipo',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  cancelado_por_tipo!: string | null;
+
+  @Column({
+    name: 'cancelado_por_id',
+    type: 'integer',
+    nullable: true,
+  })
+  cancelado_por_id!: number | null;
+
+  @Column({
+    name: 'fecha_cancelacion',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  fecha_cancelacion!: Date | null;
+
   @Index('idx_reserva_usuario')
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'id_usuario' })

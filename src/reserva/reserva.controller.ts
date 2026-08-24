@@ -33,12 +33,22 @@ export class ReservaController {
   @Post()
   @UseGuards(RolesGuard)
   @Roles('usuario', 'admin')
-  create(@Body() dto: CreateReservaDto, @Req() request: AuthenticatedRequest) {
-    const idUsuario = request.user.tipo === 'admin' ? dto.id_usuario : request.user.sub;
+  create(
+    @Body() dto: CreateReservaDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const idUsuario =
+      request.user.tipo === 'admin'
+        ? dto.id_usuario
+        : request.user.sub;
+
     return this.reservaService.create({
       ...dto,
       id_usuario: Number(idUsuario),
-      estado: request.user.tipo === 'admin' ? dto.estado : 'confirmada',
+      estado:
+        request.user.tipo === 'admin'
+          ? dto.estado
+          : 'confirmada',
     });
   }
 
@@ -52,41 +62,67 @@ export class ReservaController {
   @Get('mias')
   @UseGuards(RolesGuard)
   @Roles('usuario')
-  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate',
+  )
   findMine(@Req() request: AuthenticatedRequest) {
-    return this.reservaService.findByUsuario(Number(request.user.sub));
+    return this.reservaService.findByUsuario(
+      Number(request.user.sub),
+    );
   }
 
   @Get('usuario/:idUsuario')
-  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate',
+  )
   findByUsuario(
     @Param('idUsuario', ParseIntPipe) idUsuario: number,
     @Req() request: AuthenticatedRequest,
   ) {
-    this.accessControl.assertSelfOrAdmin(request.user, idUsuario);
+    this.accessControl.assertSelfOrAdmin(
+      request.user,
+      idUsuario,
+    );
     return this.reservaService.findByUsuario(idUsuario);
   }
 
   @Get('club/:idClub')
-  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate',
+  )
   async findByClub(
     @Param('idClub', ParseIntPipe) idClub: number,
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.accessControl.assertCanReadReservationsForClub(request.user, idClub);
+    await this.accessControl.assertCanReadReservationsForClub(
+      request.user,
+      idClub,
+    );
     return this.reservaService.findByClub(idClub);
   }
 
   @Get('disponibilidad/:idCancha/:fecha')
-  @Header('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+  @Header(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate',
+  )
   findDisponibilidad(
     @Param('idCancha', ParseIntPipe) idCancha: number,
     @Param('fecha') fecha: string,
   ) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
-      throw new BadRequestException('La fecha debe tener el formato YYYY-MM-DD.');
+      throw new BadRequestException(
+        'La fecha debe tener el formato YYYY-MM-DD.',
+      );
     }
-    return this.reservaService.findDisponibilidad(idCancha, fecha);
+
+    return this.reservaService.findDisponibilidad(
+      idCancha,
+      fecha,
+    );
   }
 
   @Get(':id')
@@ -94,7 +130,10 @@ export class ReservaController {
     @Param('id', ParseIntPipe) id: number,
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.accessControl.assertCanAccessReserva(request.user, id);
+    await this.accessControl.assertCanAccessReserva(
+      request.user,
+      id,
+    );
     return this.reservaService.findOne(id);
   }
 
@@ -104,17 +143,22 @@ export class ReservaController {
     @Body() dto: UpdateReservaDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.accessControl.assertCanAccessReserva(request.user, id);
+    await this.accessControl.assertCanAccessReserva(
+      request.user,
+      id,
+    );
 
     if (request.user.tipo === 'usuario') {
-      await this.reservaService.assertUserCanModify(id);
+      await this.reservaService.assertUserCanUpdate(id);
+
       const safeDto: UpdateReservaDto = {
         id_cancha: dto.id_cancha,
         fecha: dto.fecha,
         hora_inicio: dto.hora_inicio,
         hora_fin: dto.hora_fin,
       };
-      return this.reservaService.update(id, safeDto);
+
+      return this.reservaService.update(id, safeDto, request.user.tipo);
     }
 
     if (
@@ -127,21 +171,53 @@ export class ReservaController {
       );
     }
 
-    return this.reservaService.update(id, {
-      ...dto,
-      id_usuario: request.user.tipo === 'admin' ? dto.id_usuario : undefined,
-    });
+    return this.reservaService.update(
+      id,
+      {
+        ...dto,
+        id_usuario:
+          request.user.tipo === 'admin'
+            ? dto.id_usuario
+            : undefined,
+      },
+      request.user.tipo,
+    );
   }
 
   @Delete(':id')
   async remove(
     @Param('id', ParseIntPipe) id: number,
+    @Body() dto: { motivo?: string },
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.accessControl.assertCanAccessReserva(request.user, id);
+    await this.accessControl.assertCanAccessReserva(
+      request.user,
+      id,
+    );
+
     if (request.user.tipo === 'usuario') {
-      await this.reservaService.assertUserCanModify(id);
+      await this.reservaService.assertUserCanCancel(id);
     }
-    return this.reservaService.remove(id);
+
+    const motivo = dto?.motivo?.trim();
+    const esDueno = request.user.tipo === 'dueno';
+
+    if (esDueno && !motivo) {
+      throw new BadRequestException(
+        'Debés indicar el motivo de la cancelación.',
+      );
+    }
+
+    if (motivo && motivo.length > 500) {
+      throw new BadRequestException(
+        'El motivo de cancelación no puede superar los 500 caracteres.',
+      );
+    }
+
+    return this.reservaService.remove(id, {
+      tipo: request.user.tipo,
+      id: Number(request.user.sub),
+      motivo,
+    });
   }
 }
