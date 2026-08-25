@@ -13,6 +13,7 @@ import { Repository } from 'typeorm';
 
 import { Club } from '../club/entities/club.entity';
 import { Deporte } from '../deporte/entities/deporte.entity';
+import { User } from '../user/entities/user.entity';
 import { CreateTorneoDto } from './dto/create-torneo.dto';
 import { UpdateEstadoTorneoDto } from './dto/update-estado-torneo.dto';
 import { UpdateTorneoDto } from './dto/update-torneo.dto';
@@ -36,8 +37,20 @@ export class TorneoService {
 
     @InjectRepository(Deporte)
     private readonly deporteRepository: Repository<Deporte>,
+
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
+
+  private normalizarUbicacion(valor?: string | null) {
+    return String(valor || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
 
   private validarFechas(fechaInicio: string, fechaFin: string) {
     if (fechaInicio > fechaFin) {
@@ -133,9 +146,6 @@ export class TorneoService {
     file: Express.Multer.File | undefined,
     usuario: UsuarioAutenticadoTorneo,
   ) {
-    if (!file) {
-      throw new BadRequestException('Debés seleccionar un flyer.');
-    }
 
     try {
       const [club, deporte] = await Promise.all([
@@ -155,7 +165,9 @@ export class TorneoService {
         fecha_inicio: fechaInicio,
         fecha_fin: fechaFin,
         contacto: dto.contacto?.trim() || null,
-        flyer_url: `/uploads/torneos/${file.filename}`,
+        flyer_url: file
+          ? `/uploads/torneos/${file.filename}`
+          : null,
         estado: dto.estado ?? EstadoTorneo.BORRADOR,
       });
 
@@ -182,8 +194,8 @@ export class TorneoService {
     });
   }
 
-  async findPublicados() {
-    return this.torneoRepository.find({
+  async findPublicados(usuario: UsuarioAutenticadoTorneo) {
+    const torneos = await this.torneoRepository.find({
       where: { estado: EstadoTorneo.PUBLICADO },
       relations: ['club', 'deporte'],
       order: {
@@ -191,6 +203,50 @@ export class TorneoService {
         created_at: 'DESC',
       },
     });
+
+    // Los torneos de clubes inactivos nunca se muestran públicamente.
+    let torneosVisibles = torneos.filter(
+      (torneo) => torneo.club?.estado === 'activo',
+    );
+
+    // Los usuarios comunes solo ven torneos de clubes de su misma ciudad/provincia.
+    // Dueños y admins conservan acceso global.
+    if (usuario.tipo === 'usuario') {
+      const usuarioCompleto = await this.userRepository.findOne({
+        where: { id_usuario: Number(usuario.sub) },
+      });
+
+      if (!usuarioCompleto) {
+        throw new NotFoundException('Usuario no encontrado.');
+      }
+
+      const ciudadUsuario = this.normalizarUbicacion(
+        usuarioCompleto.ciudad_usuario,
+      );
+      const provinciaUsuario = this.normalizarUbicacion(
+        usuarioCompleto.provincia_usuario,
+      );
+
+      if (!ciudadUsuario || !provinciaUsuario) {
+        return [];
+      }
+
+      torneosVisibles = torneosVisibles.filter((torneo) => {
+        const ciudadClub = this.normalizarUbicacion(
+          torneo.club?.ciudad_club,
+        );
+        const provinciaClub = this.normalizarUbicacion(
+          torneo.club?.provincia_club,
+        );
+
+        return (
+          ciudadClub === ciudadUsuario &&
+          provinciaClub === provinciaUsuario
+        );
+      });
+    }
+
+    return torneosVisibles;
   }
 
   async findOne(
@@ -332,5 +388,4 @@ export class TorneoService {
       id_torneo: id,
     };
   }
-
 }

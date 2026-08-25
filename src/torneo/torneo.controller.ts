@@ -48,8 +48,9 @@ export class TorneoController {
   }
 
   @Get('publicados')
-  findPublicados() {
-    return this.torneoService.findPublicados();
+  @UseGuards(AuthGuard)
+  findPublicados(@Req() request: RequestAutenticada) {
+    return this.torneoService.findPublicados(request.user);
   }
 
   @Get('club/:idClub')
@@ -114,5 +115,4 @@ export class TorneoController {
   ) {
     return this.torneoService.removePermanently(id, request.user);
   }
-
 }

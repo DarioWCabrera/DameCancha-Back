@@ -49,8 +49,13 @@ export class Torneo {
   @Column({ name: 'contacto', type: 'varchar', length: 180, nullable: true })
   contacto!: string | null;
 
-  @Column({ name: 'flyer_url', type: 'varchar', length: 255 })
-  flyer_url!: string;
+ @Column({
+  name: 'flyer_url',
+  type: 'varchar',
+  length: 255,
+  nullable: true,
+})
+flyer_url!: string | null;
 
   @Column({
     name: 'estado',

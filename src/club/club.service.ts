@@ -26,7 +26,15 @@ export class ClubService {
     private readonly userRepository: Repository<User>,
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
+
+  private normalizarUbicacion(valor?: string | null) {
+    return String(valor || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  }
 
   async create(createClubDto: CreateClubDto) {
     const { id_dueno, ...data } = createClubDto;
@@ -178,19 +186,72 @@ export class ClubService {
     }));
   }
 
-  async getAceptados(includePrivateDetails = false) {
+  async getAceptados(
+    includePrivateDetails = false,
+    idUsuario?: number,
+    tipoUsuario?: string,
+  ) {
     const clubs = await this.clubRepository.find({
       where: [{ estado: 'activo' }, { estado: 'inactivo' }],
       relations: ['dueno', 'canchas', 'canchas.id_deporte'],
       order: { nombre_club: 'ASC' },
     });
 
-    return clubs.map((club) => ({
+    let clubsVisibles = clubs;
+
+    // Los usuarios comunes solo ven clubes de su misma ciudad y provincia.
+    // Admins y dueños siguen viendo todos.
+    if (!includePrivateDetails && tipoUsuario === 'usuario') {
+      if (!idUsuario) {
+        return [];
+      }
+
+      const usuario = await this.userRepository.findOne({
+        where: { id_usuario: idUsuario },
+      });
+
+      if (!usuario) {
+        throw new NotFoundException('Usuario no encontrado.');
+      }
+
+      const ciudadUsuario = this.normalizarUbicacion(
+        usuario.ciudad_usuario,
+      );
+
+      const provinciaUsuario = this.normalizarUbicacion(
+        usuario.provincia_usuario,
+      );
+
+      // Si una cuenta antigua no tiene localidad cargada,
+      // evitamos mostrarle todos los clubes accidentalmente.
+      if (!ciudadUsuario || !provinciaUsuario) {
+        return [];
+      }
+
+      clubsVisibles = clubs.filter((club) => {
+        const ciudadClub = this.normalizarUbicacion(
+          club.ciudad_club,
+        );
+
+        const provinciaClub = this.normalizarUbicacion(
+          club.provincia_club,
+        );
+
+        return (
+          ciudadClub === ciudadUsuario &&
+          provinciaClub === provinciaUsuario
+        );
+      });
+    }
+
+    return clubsVisibles.map((club) => ({
       id: club.id_club,
       nombre: club.nombre_club,
+
       ...(includePrivateDetails
         ? { email: club.dueno?.email_usuario }
         : {}),
+
       telefono: club.telefono_club,
       canchas: club.deportes_club,
       direccion: club.direccion_club,
@@ -200,6 +261,7 @@ export class ClubService {
       servicios: club.servicios_club,
       servicios_club: club.servicios_club,
       activo: club.estado === 'activo',
+
       detallesCanchas:
         club.canchas
           ?.filter((cancha) => cancha.activa === 1)

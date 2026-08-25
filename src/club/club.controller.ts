@@ -30,7 +30,7 @@ export class ClubController {
   constructor(
     private readonly clubService: ClubService,
     private readonly accessControl: AccessControlService,
-  ) {}
+  ) { }
 
   @Post()
   @UseGuards(AuthGuard, RolesGuard)
@@ -68,8 +68,12 @@ export class ClubController {
 
   @Get('aceptados')
   @UseGuards(AuthGuard)
-  getAceptados() {
-    return this.clubService.getAceptados(false);
+  getAceptados(@Req() request: AuthenticatedRequest) {
+    return this.clubService.getAceptados(
+      false,
+      Number(request.user.sub),
+      request.user.tipo,
+    );
   }
 
   @Get('dueno/:idDueno')
