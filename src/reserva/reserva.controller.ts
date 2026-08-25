@@ -200,7 +200,7 @@ export class ReservaController {
     }
 
     const motivo = dto?.motivo?.trim();
-    const esDueno = request.user.tipo === 'dueno';
+    const esDueno = request.user.tipo === 'dueno' || request.user.tipo === 'club';
 
     if (esDueno && !motivo) {
       throw new BadRequestException(

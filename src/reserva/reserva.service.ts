@@ -492,9 +492,11 @@ export class ReservaService {
       throw new BadRequestException('La fecha de la reserva no es válida.');
     }
 
-    if (inicio.getTime() <= Date.now()) {
+    const horasRestantes = (inicio.getTime() - Date.now()) / 3_600_000;
+
+    if (horasRestantes < 2) {
       throw new BadRequestException(
-        'La reserva ya comenzó y no puede cancelarse.',
+        'Las reservas solo pueden cancelarse con al menos 2 horas de anticipación.',
       );
     }
   }

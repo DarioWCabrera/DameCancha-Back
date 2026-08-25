@@ -14,6 +14,7 @@ import { UserModule } from './user/user.module';
 import { GeorefModule } from './georef/georef.module';
 import { AuthModule } from './auth/auth.module';
 import { TorneoModule } from './torneo/torneo.module';
+import { AnuncioClubModule } from './anuncio-club/anuncio-club.module';
 import { BancoSuplentesModule } from './banco-suplentes/banco-suplentes.module';
 import { BloqueoCanchaModule } from './bloqueo-cancha/bloqueo-cancha.module';
 import { AppController } from './app.controller';
@@ -42,6 +43,7 @@ import { SolicitudBajaModule } from './solicitud-baja/solicitud-baja.module';
     MailModule,
     GeorefModule,
     TorneoModule,
+    AnuncioClubModule,
     BancoSuplentesModule,
     SolicitudBajaModule,
   ],
