@@ -7,6 +7,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
+
 import { User } from '../../user/entities/user.entity';
 import { Cancha } from '../../cancha/entities/cancha.entity';
 
@@ -26,7 +27,12 @@ export class Reserva {
   @Column({ name: 'hora_fin', type: 'time' })
   hora_fin!: string;
 
-  @Column({ name: 'monto_total', type: 'decimal', precision: 10, scale: 2 })
+  @Column({
+    name: 'monto_total',
+    type: 'decimal',
+    precision: 10,
+    scale: 2,
+  })
   monto_total!: number;
 
   @Column({
@@ -36,6 +42,17 @@ export class Reserva {
     default: 'pendiente',
   })
   estado!: string;
+
+  /*
+    Snapshot de la política que tenía el club cuando se creó esta reserva.
+    Si el club cambia su política después, esta reserva mantiene la original.
+  */
+  @Column({
+    name: 'horas_anticipacion_cancelacion_snapshot',
+    type: 'smallint',
+    default: 2,
+  })
+  horas_anticipacion_cancelacion_snapshot!: number;
 
   /*
     Estado administrativo del cobro.
@@ -89,7 +106,6 @@ export class Reserva {
     nullable: true,
   })
   fecha_pago!: Date | null;
-
 
   @Column({
     name: 'motivo_cancelacion',

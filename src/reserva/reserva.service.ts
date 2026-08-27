@@ -15,6 +15,7 @@ import { BloqueoCanchaService } from '../bloqueo-cancha/bloqueo-cancha.service';
 import { BloqueoCancha } from '../bloqueo-cancha/entities/bloqueo-cancha.entity';
 import { Cancha } from '../cancha/entities/cancha.entity';
 import { Reserva } from './entities/reserva.entity';
+import { TurnoFijo } from '../turno-fijo/entities/turno-fijo.entity';
 import { MailService } from '../mail/mail.service';
 
 @Injectable()
@@ -28,7 +29,7 @@ export class ReservaService {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
-  ) {}
+  ) { }
 
   private normalizarFechaCalendario(fecha: string | Date): string {
     if (typeof fecha === 'string') {
@@ -67,6 +68,8 @@ export class ReservaService {
       hora_fin: reserva.hora_fin,
       monto_total: reserva.monto_total,
       estado: reserva.estado,
+      horas_anticipacion_cancelacion_snapshot:
+        reserva.horas_anticipacion_cancelacion_snapshot,
       estado_pago: reserva.estado_pago,
       mercado_pago_preference_id: reserva.mercado_pago_preference_id,
       mercado_pago_payment_id: reserva.mercado_pago_payment_id,
@@ -81,10 +84,10 @@ export class ReservaService {
       usuario: this.normalizarUsuario(reserva.usuario),
       cancha: reserva.cancha
         ? {
-            ...reserva.cancha,
-            club: reserva.cancha.id_club,
-            deporte: reserva.cancha.id_deporte,
-          }
+          ...reserva.cancha,
+          club: reserva.cancha.id_club,
+          deporte: reserva.cancha.id_deporte,
+        }
         : null,
     };
   }
@@ -182,12 +185,10 @@ export class ReservaService {
 
   private calcularMonto(
     cancha: Cancha,
-    horaInicio: string,
-    horaFin: string,
+    _horaInicio: string,
+    _horaFin: string,
   ): number {
-    const minutes = this.minutos(horaFin) - this.minutos(horaInicio);
-    const hourlyPrice = Number(cancha.precio_por_hora || 0);
-    return Math.round(hourlyPrice * (minutes / 60) * 100) / 100;
+    return Number(cancha.precio_por_hora || 0);
   }
 
   private buscarReservaSolapada(
@@ -245,6 +246,48 @@ export class ReservaService {
       .andWhere('bloqueo.activo = 1')
       .andWhere('bloqueo.hora_inicio < :horaFin', { horaFin })
       .andWhere('bloqueo.hora_fin > :horaInicio', { horaInicio })
+      .getOne();
+  }
+
+  private obtenerDiaSemanaFecha(fecha: Date | string): number {
+    const fechaNormalizada = String(fecha).slice(0, 10);
+    const [anio, mes, dia] = fechaNormalizada.split('-').map(Number);
+
+    return new Date(
+      Date.UTC(anio, mes - 1, dia),
+    ).getUTCDay();
+  }
+
+  private buscarTurnoFijoSolapado(
+    manager: EntityManager,
+    idCancha: number,
+    fecha: Date | string,
+    horaInicio: string,
+    horaFin: string,
+  ) {
+    const fechaNormalizada = String(fecha).slice(0, 10);
+    const diaSemana = this.obtenerDiaSemanaFecha(fechaNormalizada);
+
+    return manager
+      .getRepository(TurnoFijo)
+      .createQueryBuilder('turno')
+      .innerJoin('turno.cancha', 'cancha')
+      .where('cancha.id_cancha = :idCancha', { idCancha })
+      .andWhere('turno.estado = :estadoActivo', {
+        estadoActivo: 'activo',
+      })
+      .andWhere('turno.dia_semana = :diaSemana', { diaSemana })
+      .andWhere('turno.hora_fin IS NOT NULL')
+      .andWhere('turno.fecha_inicio IS NOT NULL')
+      .andWhere('turno.fecha_inicio <= :fecha', {
+        fecha: fechaNormalizada,
+      })
+      .andWhere(
+        '(turno.fecha_fin IS NULL OR turno.fecha_fin >= :fecha)',
+        { fecha: fechaNormalizada },
+      )
+      .andWhere('turno.hora_inicio < :horaFin', { horaFin })
+      .andWhere('turno.hora_fin > :horaInicio', { horaInicio })
       .getOne();
   }
 
@@ -437,6 +480,22 @@ export class ReservaService {
     }
   }
 
+  private obtenerHorasAnticipacionReserva(reserva: Reserva): number {
+    const valor = Number(
+      reserva.horas_anticipacion_cancelacion_snapshot ?? 2,
+    );
+
+    if (!Number.isInteger(valor) || valor < 1 || valor > 168) {
+      return 2;
+    }
+
+    return valor;
+  }
+
+  private textoHorasAnticipacion(horas: number): string {
+    return horas === 1 ? '1 hora' : `${horas} horas`;
+  }
+
   async assertUserCanUpdate(id: number) {
     const reserva = await this.reservaRepository.findOne({
       where: { id_reserva: id },
@@ -460,11 +519,17 @@ export class ReservaService {
       throw new BadRequestException('La fecha de la reserva no es válida.');
     }
 
-    const horasRestantes = (inicio.getTime() - Date.now()) / 3_600_000;
+    const horasRestantes =
+      (inicio.getTime() - Date.now()) / 3_600_000;
 
-    if (horasRestantes < 2) {
+    const horasAnticipacion =
+      this.obtenerHorasAnticipacionReserva(reserva);
+
+    if (horasRestantes < horasAnticipacion) {
       throw new BadRequestException(
-        'Las reservas solo pueden modificarse con al menos 2 horas de anticipación.',
+        `Las reservas solo pueden modificarse con al menos ${this.textoHorasAnticipacion(
+          horasAnticipacion,
+        )} de anticipación.`,
       );
     }
   }
@@ -492,11 +557,17 @@ export class ReservaService {
       throw new BadRequestException('La fecha de la reserva no es válida.');
     }
 
-    const horasRestantes = (inicio.getTime() - Date.now()) / 3_600_000;
+    const horasRestantes =
+      (inicio.getTime() - Date.now()) / 3_600_000;
 
-    if (horasRestantes < 2) {
+    const horasAnticipacion =
+      this.obtenerHorasAnticipacionReserva(reserva);
+
+    if (horasRestantes < horasAnticipacion) {
       throw new BadRequestException(
-        'Las reservas solo pueden cancelarse con al menos 2 horas de anticipación.',
+        `Las reservas solo pueden cancelarse con al menos ${this.textoHorasAnticipacion(
+          horasAnticipacion,
+        )} de anticipación.`,
       );
     }
   }
@@ -568,6 +639,14 @@ export class ReservaService {
           horaFin,
         );
 
+        const turnoFijoExistente = await this.buscarTurnoFijoSolapado(
+          manager,
+          createReservaDto.id_cancha,
+          fecha,
+          horaInicio,
+          horaFin,
+        );
+
         if (reservaExistente) {
           throw new ConflictException(
             'La cancha ya está reservada para esa fecha y horario.',
@@ -577,6 +656,12 @@ export class ReservaService {
         if (bloqueoExistente) {
           throw new ConflictException(
             'La cancha fue bloqueada por el club para esa fecha y horario.',
+          );
+        }
+
+        if (turnoFijoExistente) {
+          throw new ConflictException(
+            'La cancha tiene un turno fijo activo para esa fecha y horario.',
           );
         }
 
@@ -590,6 +675,16 @@ export class ReservaService {
             horaFin,
           ),
           estado: createReservaDto.estado || 'confirmada',
+
+          /*
+            Snapshot de la política vigente del club.
+            Este valor NO se recalcula si el club cambia su política después.
+          */
+          horas_anticipacion_cancelacion_snapshot:
+            Number(
+              cancha.id_club.horas_anticipacion_cancelacion ?? 2,
+            ),
+
           estado_pago: 'pago_en_club',
           usuario: {
             id_usuario: createReservaDto.id_usuario,
@@ -674,12 +769,17 @@ export class ReservaService {
   }
 
   async findDisponibilidad(idCancha: number, fecha: string) {
-    const [reservas, bloqueos] = await Promise.all([
+    const fechaNormalizada = String(fecha).slice(0, 10);
+    const diaSemana = this.obtenerDiaSemanaFecha(fechaNormalizada);
+
+    const [reservas, bloqueos, turnosFijos] = await Promise.all([
       this.reservaRepository
         .createQueryBuilder('reserva')
         .innerJoin('reserva.cancha', 'cancha')
         .where('cancha.id_cancha = :idCancha', { idCancha })
-        .andWhere('reserva.fecha = :fecha', { fecha })
+        .andWhere('reserva.fecha = :fecha', {
+          fecha: fechaNormalizada,
+        })
         .andWhere('reserva.estado != :estadoCancelado', {
           estadoCancelado: 'cancelada',
         })
@@ -687,8 +787,28 @@ export class ReservaService {
         .getMany(),
       this.bloqueoCanchaService.findActivosPorCanchaYFecha(
         idCancha,
-        fecha,
+        fechaNormalizada,
       ),
+      this.dataSource
+        .getRepository(TurnoFijo)
+        .createQueryBuilder('turno')
+        .innerJoin('turno.cancha', 'cancha')
+        .where('cancha.id_cancha = :idCancha', { idCancha })
+        .andWhere('turno.estado = :estadoActivo', {
+          estadoActivo: 'activo',
+        })
+        .andWhere('turno.dia_semana = :diaSemana', { diaSemana })
+        .andWhere('turno.hora_fin IS NOT NULL')
+        .andWhere('turno.fecha_inicio IS NOT NULL')
+        .andWhere('turno.fecha_inicio <= :fecha', {
+          fecha: fechaNormalizada,
+        })
+        .andWhere(
+          '(turno.fecha_fin IS NULL OR turno.fecha_fin >= :fecha)',
+          { fecha: fechaNormalizada },
+        )
+        .orderBy('turno.hora_inicio', 'ASC')
+        .getMany(),
     ]);
 
     return [
@@ -696,8 +816,9 @@ export class ReservaService {
         tipo_ocupacion: 'reserva',
         id_reserva: reserva.id_reserva,
         id_bloqueo: null,
+        id_turno_fijo: null,
         id_cancha: idCancha,
-        fecha,
+        fecha: fechaNormalizada,
         hora_inicio: reserva.hora_inicio,
         hora_fin: reserva.hora_fin,
         estado: reserva.estado,
@@ -707,12 +828,25 @@ export class ReservaService {
         tipo_ocupacion: 'bloqueo',
         id_reserva: null,
         id_bloqueo: bloqueo.id_bloqueo,
+        id_turno_fijo: null,
         id_cancha: idCancha,
-        fecha: bloqueo.fecha,
+        fecha: this.normalizarFechaCalendario(bloqueo.fecha),
         hora_inicio: bloqueo.hora_inicio,
         hora_fin: bloqueo.hora_fin,
         estado: 'bloqueada',
         motivo: bloqueo.motivo,
+      })),
+      ...turnosFijos.map((turno) => ({
+        tipo_ocupacion: 'turno_fijo',
+        id_reserva: null,
+        id_bloqueo: null,
+        id_turno_fijo: turno.id_turno_fijo,
+        id_cancha: idCancha,
+        fecha: fechaNormalizada,
+        hora_inicio: turno.hora_inicio,
+        hora_fin: turno.hora_fin,
+        estado: turno.estado,
+        motivo: 'Turno fijo',
       })),
     ].sort((a, b) =>
       String(a.hora_inicio).localeCompare(String(b.hora_inicio)),
@@ -828,6 +962,14 @@ export class ReservaService {
           horaFin,
         );
 
+        const turnoFijoExistente = await this.buscarTurnoFijoSolapado(
+          manager,
+          idCancha,
+          fecha,
+          horaInicio,
+          horaFin,
+        );
+
         if (overlap) {
           throw new ConflictException(
             'La cancha ya está reservada para esa fecha y horario.',
@@ -837,6 +979,12 @@ export class ReservaService {
         if (blockage) {
           throw new ConflictException(
             'La cancha fue bloqueada por el club para esa fecha y horario.',
+          );
+        }
+
+        if (turnoFijoExistente) {
+          throw new ConflictException(
+            'La cancha tiene un turno fijo activo para esa fecha y horario.',
           );
         }
 

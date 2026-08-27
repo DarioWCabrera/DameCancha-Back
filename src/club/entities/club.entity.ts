@@ -1,7 +1,16 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, OneToMany, JoinColumn, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  ManyToOne,
+  OneToMany,
+  JoinColumn,
+  Index,
+} from 'typeorm';
+
 import { Cancha } from '../../cancha/entities/cancha.entity';
 import { User } from '../../user/entities/user.entity';
-
 
 @Index('idx_club_estado', ['estado'])
 @Entity('club')
@@ -39,11 +48,23 @@ export class Club {
   @Column({ name: 'servicios_club', type: 'text', nullable: true })
   servicios_club!: string | null;
 
+  /*
+    Política vigente del club para nuevas reservas.
+    Se aplica tanto a cancelaciones como a modificaciones realizadas por el usuario.
+    Cada reserva guarda una copia de este valor al crearse.
+  */
+  @Column({
+    name: 'horas_anticipacion_cancelacion',
+    type: 'smallint',
+    default: 2,
+  })
+  horas_anticipacion_cancelacion!: number;
+
   @Column({
     name: 'estado',
     type: 'enum',
     enum: ['activo', 'inactivo', 'pendiente_aprobacion'],
-    default: 'activo'
+    default: 'activo',
   })
   estado!: string;
 
@@ -58,8 +79,6 @@ export class Club {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   created_at!: Date;
 
-
   @OneToMany(() => Cancha, (cancha) => cancha.id_club)
   canchas!: Cancha[];
-
 }
