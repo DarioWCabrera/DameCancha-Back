@@ -18,6 +18,8 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ClubService } from './club.service';
 import { CreateClubDto } from './dto/create-club.dto';
 import { UpdateClubDto } from './dto/update-club.dto';
+import { GuardarClienteAliasDto } from './dto/guardar-cliente-alias.dto';
+
 import { AuthGuard } from '../auth/guard/auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guard/roles.guard';
@@ -35,9 +37,19 @@ export class ClubController {
   @Post()
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('club', 'dueno', 'admin')
-  create(@Body() dto: CreateClubDto, @Req() request: AuthenticatedRequest) {
-    const ownerId = request.user.tipo === 'admin' ? dto.id_dueno : request.user.sub;
-    return this.clubService.create({ ...dto, id_dueno: Number(ownerId) });
+  create(
+    @Body() dto: CreateClubDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    const ownerId =
+      request.user.tipo === 'admin'
+        ? dto.id_dueno
+        : request.user.sub;
+
+    return this.clubService.create({
+      ...dto,
+      id_dueno: Number(ownerId),
+    });
   }
 
   @Post('dueno/:idDueno')
@@ -48,8 +60,15 @@ export class ClubController {
     @Body() body: Record<string, unknown>,
     @Req() request: AuthenticatedRequest,
   ) {
-    this.accessControl.assertSelfOrAdmin(request.user, idDueno);
-    return this.clubService.createForOwner(idDueno, body);
+    this.accessControl.assertSelfOrAdmin(
+      request.user,
+      idDueno,
+    );
+
+    return this.clubService.createForOwner(
+      idDueno,
+      body,
+    );
   }
 
   @Get('pendientes')
@@ -68,7 +87,9 @@ export class ClubController {
 
   @Get('aceptados')
   @UseGuards(AuthGuard)
-  getAceptados(@Req() request: AuthenticatedRequest) {
+  getAceptados(
+    @Req() request: AuthenticatedRequest,
+  ) {
     return this.clubService.getAceptados(
       false,
       Number(request.user.sub),
@@ -82,8 +103,56 @@ export class ClubController {
     @Param('idDueno', ParseIntPipe) idDueno: number,
     @Req() request: AuthenticatedRequest,
   ) {
-    this.accessControl.assertSelfOrAdmin(request.user, idDueno);
+    this.accessControl.assertSelfOrAdmin(
+      request.user,
+      idDueno,
+    );
+
     return this.clubService.findByDueno(idDueno);
+  }
+
+  // =========================================================
+  // ALIAS INTERNOS DE CLIENTES
+  // =========================================================
+
+  @Get(':idClub/clientes/:idUsuario/alias')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('dueno', 'club', 'admin')
+  async obtenerAliasCliente(
+    @Param('idClub', ParseIntPipe) idClub: number,
+    @Param('idUsuario', ParseIntPipe) idUsuario: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanManageClub(
+      request.user,
+      idClub,
+    );
+
+    return this.clubService.obtenerAliasCliente(
+      idClub,
+      idUsuario,
+    );
+  }
+
+  @Put(':idClub/clientes/:idUsuario/alias')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('dueno', 'club', 'admin')
+  async guardarAliasCliente(
+    @Param('idClub', ParseIntPipe) idClub: number,
+    @Param('idUsuario', ParseIntPipe) idUsuario: number,
+    @Body() dto: GuardarClienteAliasDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanManageClub(
+      request.user,
+      idClub,
+    );
+
+    return this.clubService.guardarAliasCliente(
+      idClub,
+      idUsuario,
+      dto.alias,
+    );
   }
 
   @Get()
@@ -92,42 +161,66 @@ export class ClubController {
   }
 
   @Get(':id')
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.clubService.findOne(id);
   }
 
   @Put(':id/toggle-status')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
-  toggleStatus(@Param('id', ParseIntPipe) id: number, @Body('activo') activo: boolean) {
-    return this.clubService.toggleStatus(id, activo);
+  toggleStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('activo') activo: boolean,
+  ) {
+    return this.clubService.toggleStatus(
+      id,
+      activo,
+    );
   }
 
   @Put(':id/aceptar')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
-  aceptar(@Param('id', ParseIntPipe) id: number) {
+  aceptar(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.clubService.aceptar(id);
   }
 
   @Put(':id/rechazar')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('admin')
-  rechazar(@Param('id', ParseIntPipe) id: number) {
+  rechazar(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return this.clubService.rechazar(id);
   }
 
   @Patch(':id/logo')
   @UseGuards(AuthGuard, RolesGuard)
   @Roles('dueno', 'admin', 'club')
-  @UseInterceptors(FileInterceptor('logo', imageUploadOptions('clubs', 2)))
+  @UseInterceptors(
+    FileInterceptor(
+      'logo',
+      imageUploadOptions('clubs', 2),
+    ),
+  )
   async updateLogo(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File | undefined,
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.accessControl.assertCanManageClub(request.user, id);
-    return this.clubService.updateLogo(id, file);
+    await this.accessControl.assertCanManageClub(
+      request.user,
+      id,
+    );
+
+    return this.clubService.updateLogo(
+      id,
+      file,
+    );
   }
 
   @Patch(':id')
@@ -138,8 +231,15 @@ export class ClubController {
     @Body() dto: UpdateClubDto,
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.accessControl.assertCanManageClub(request.user, id);
-    return this.clubService.update(id, dto);
+    await this.accessControl.assertCanManageClub(
+      request.user,
+      id,
+    );
+
+    return this.clubService.update(
+      id,
+      dto,
+    );
   }
 
   @Delete(':id')
@@ -149,7 +249,11 @@ export class ClubController {
     @Param('id', ParseIntPipe) id: number,
     @Req() request: AuthenticatedRequest,
   ) {
-    await this.accessControl.assertCanManageClub(request.user, id);
+    await this.accessControl.assertCanManageClub(
+      request.user,
+      id,
+    );
+
     return this.clubService.remove(id);
   }
 }

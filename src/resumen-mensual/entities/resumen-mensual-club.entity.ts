@@ -161,6 +161,45 @@ export class ResumenMensualClub {
   monto_pagado_registrado!: number;
 
   @Column({
+    name: 'monto_cobrado_efectivo',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? 0,
+      from: (value: string | number | null) => Number(value ?? 0),
+    },
+  })
+  monto_cobrado_efectivo!: number;
+
+  @Column({
+    name: 'monto_cobrado_electronico',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? 0,
+      from: (value: string | number | null) => Number(value ?? 0),
+    },
+  })
+  monto_cobrado_electronico!: number;
+
+  @Column({
+    name: 'monto_cobrado_total',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? 0,
+      from: (value: string | number | null) => Number(value ?? 0),
+    },
+  })
+  monto_cobrado_total!: number;
+
+  @Column({
     name: 'ingresos_manuales_total',
     type: 'decimal',
     precision: 14,
@@ -172,6 +211,45 @@ export class ResumenMensualClub {
     },
   })
   ingresos_manuales_total!: number;
+
+  @Column({
+    name: 'ingresos_manuales_efectivo',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? 0,
+      from: (value: string | number | null) => Number(value ?? 0),
+    },
+  })
+  ingresos_manuales_efectivo!: number;
+
+  @Column({
+    name: 'ingresos_manuales_electronico',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? 0,
+      from: (value: string | number | null) => Number(value ?? 0),
+    },
+  })
+  ingresos_manuales_electronico!: number;
+
+  @Column({
+    name: 'ingresos_manuales_sin_clasificar',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: 0,
+    transformer: {
+      to: (value: number | null | undefined) => value ?? 0,
+      from: (value: string | number | null) => Number(value ?? 0),
+    },
+  })
+  ingresos_manuales_sin_clasificar!: number;
 
   @Column({
     name: 'detalle_ingresos_manuales',

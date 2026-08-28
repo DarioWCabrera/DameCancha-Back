@@ -75,6 +75,7 @@ type TurnoFijoBase = {
 type IngresoManualBase = {
   categoria: keyof ResumenMensualIngresosManuales;
   monto: string | number;
+  metodo_pago: 'efectivo' | 'electronico' | null;
 };
 
 type SlotMes = {
@@ -104,7 +105,7 @@ export class ResumenMensualService {
     private readonly clubRepository: Repository<Club>,
 
     private readonly dataSource: DataSource,
-  ) {}
+  ) { }
 
   private serializarResumen(
     resumen: ResumenMensualClub,
@@ -139,9 +140,49 @@ export class ResumenMensualService {
         resumen.monto_pagado_registrado,
       ),
 
+      monto_cobrado_efectivo: Number(
+        resumen.monto_cobrado_efectivo,
+      ),
+
+      monto_cobrado_electronico: Number(
+        resumen.monto_cobrado_electronico,
+      ),
+
+      monto_cobrado_total: Number(
+        resumen.monto_cobrado_total,
+      ),
+
       ingresos_manuales_total: Number(
         resumen.ingresos_manuales_total,
       ),
+
+      ingresos_manuales_efectivo: Number(
+        resumen.ingresos_manuales_efectivo,
+      ),
+
+      ingresos_manuales_electronico: Number(
+        resumen.ingresos_manuales_electronico,
+      ),
+
+      ingresos_manuales_sin_clasificar: Number(
+        resumen.ingresos_manuales_sin_clasificar,
+      ),
+
+      ingresos_totales_efectivo:
+        Number(resumen.monto_cobrado_efectivo) +
+        Number(resumen.ingresos_manuales_efectivo),
+
+      ingresos_totales_electronico:
+        Number(resumen.monto_cobrado_electronico) +
+        Number(resumen.ingresos_manuales_electronico),
+
+      ingresos_totales_sin_clasificar:
+        Number(resumen.ingresos_manuales_sin_clasificar),
+
+      ingresos_totales_registrados:
+        Number(resumen.monto_cobrado_total) +
+        Number(resumen.ingresos_manuales_total),
+
       detalle_ingresos_manuales:
         resumen.detalle_ingresos_manuales,
       total_consolidado_informado: Number(
@@ -581,7 +622,7 @@ export class ResumenMensualService {
       ) ||
       !turno.hora_fin ||
       Number(turno.dia_semana) !==
-        diaSemana
+      diaSemana
     ) {
       return false;
     }
@@ -661,7 +702,7 @@ export class ResumenMensualService {
       canchas.length === 0
         ? []
         : await this.dataSource.query(
-            `
+          `
               SELECT
                 d.id_cancha,
                 d.dia_semana,
@@ -676,8 +717,8 @@ export class ResumenMensualService {
                 d.dia_semana,
                 d.hora_inicio
             `,
-            [idClub],
-          );
+          [idClub],
+        );
 
     const reservas: ReservaBase[] =
       await this.dataSource.query(
@@ -786,7 +827,8 @@ export class ResumenMensualService {
         `
           SELECT
             categoria,
-            monto
+             monto,
+            metodo_pago
           FROM ingreso_manual_club
           WHERE id_club = $1
             AND fecha >= $2
@@ -801,6 +843,76 @@ export class ResumenMensualService {
           periodo.finExclusivo,
         ],
       );
+
+    const cobrosReservas: Array<{
+      total_efectivo: string | number;
+      total_electronico: string | number;
+      total_cobrado: string | number;
+    }> = await this.dataSource.query(
+      `
+    SELECT
+      COALESCE(
+        SUM(
+          CASE
+            WHEN rc.metodo_pago = 'efectivo'
+            THEN rc.monto
+            ELSE 0
+          END
+        ),
+        0
+      ) AS total_efectivo,
+
+      COALESCE(
+        SUM(
+          CASE
+            WHEN rc.metodo_pago = 'electronico'
+            THEN rc.monto
+            ELSE 0
+          END
+        ),
+        0
+      ) AS total_electronico,
+
+      COALESCE(
+        SUM(rc.monto),
+        0
+      ) AS total_cobrado
+
+    FROM reserva_cobro rc
+
+    INNER JOIN reserva r
+      ON r.id_reserva = rc.id_reserva
+
+    INNER JOIN cancha c
+      ON c.id_cancha = r.id_cancha
+
+    WHERE c.id_club = $1
+      AND r.fecha >= $2
+      AND r.fecha < $3
+      AND r.estado <> 'cancelada'
+  `,
+      [
+        idClub,
+        periodo.inicio,
+        periodo.finExclusivo,
+      ],
+    );
+
+    const montoCobradoEfectivo =
+      Number(
+        cobrosReservas[0]?.total_efectivo || 0,
+      );
+
+    const montoCobradoElectronico =
+      Number(
+        cobrosReservas[0]?.total_electronico || 0,
+      );
+
+    const montoCobradoTotal =
+      Number(
+        cobrosReservas[0]?.total_cobrado || 0,
+      );
+
 
     const totalReservas =
       reservas.length;
@@ -875,7 +987,7 @@ export class ResumenMensualService {
             r.estado !== 'cancelada' &&
             r.monto_pagado !== null &&
             r.monto_pagado !==
-              undefined,
+            undefined,
         )
         .reduce(
           (acc, r) =>
@@ -888,16 +1000,24 @@ export class ResumenMensualService {
 
     const detalleIngresos:
       ResumenMensualIngresosManuales =
-      {
-        buffet: 0,
-        alquiler_equipamiento: 0,
-        evento: 0,
-        clase: 0,
-        sponsor: 0,
-        otro: 0,
-      };
+    {
+      buffet: 0,
+      alquiler_equipamiento: 0,
+      evento: 0,
+      clase: 0,
+      sponsor: 0,
+      otro: 0,
+    };
+
+    let ingresosManualesEfectivo = 0;
+    let ingresosManualesElectronico = 0;
+    let ingresosManualesSinClasificar = 0;
 
     for (const ingreso of ingresos) {
+      const monto = Number(
+        ingreso.monto || 0,
+      );
+
       if (
         Object.prototype
           .hasOwnProperty.call(
@@ -907,9 +1027,24 @@ export class ResumenMensualService {
       ) {
         detalleIngresos[
           ingreso.categoria
-        ] += Number(
-          ingreso.monto || 0,
-        );
+        ] += monto;
+      }
+
+      if (
+        ingreso.metodo_pago ===
+        'efectivo'
+      ) {
+        ingresosManualesEfectivo +=
+          monto;
+      } else if (
+        ingreso.metodo_pago ===
+        'electronico'
+      ) {
+        ingresosManualesElectronico +=
+          monto;
+      } else {
+        ingresosManualesSinClasificar +=
+          monto;
       }
     }
 
@@ -921,6 +1056,21 @@ export class ResumenMensualService {
           acc + monto,
         0,
       );
+
+    const ingresosTotalesEfectivo =
+      montoCobradoEfectivo +
+      ingresosManualesEfectivo;
+
+    const ingresosTotalesElectronico =
+      montoCobradoElectronico +
+      ingresosManualesElectronico;
+
+    const ingresosTotalesSinClasificar =
+      ingresosManualesSinClasificar;
+
+    const ingresosTotalesRegistrados =
+      montoCobradoTotal +
+      ingresosManualesTotal;
 
     const detalleCanchas =
       canchas.map((cancha) => {
@@ -977,7 +1127,7 @@ export class ResumenMensualService {
                 this.fechaComoISO(
                   bloqueo.fecha,
                 ) ===
-                  slot.fecha &&
+                slot.fecha &&
                 this.seSuperponen(
                   slot.hora_inicio,
                   slot.hora_fin,
@@ -1003,7 +1153,7 @@ export class ResumenMensualService {
                 this.fechaComoISO(
                   r.fecha,
                 ) ===
-                  slot.fecha &&
+                slot.fecha &&
                 this.seSuperponen(
                   slot.hora_inicio,
                   slot.hora_fin,
@@ -1025,7 +1175,7 @@ export class ResumenMensualService {
                   slot.hora_fin,
                   turno.hora_inicio,
                   turno.hora_fin ||
-                    '',
+                  '',
                 ),
             );
 
@@ -1040,14 +1190,14 @@ export class ResumenMensualService {
         const ocupacion =
           turnosOfrecidos > 0
             ? Number(
+              (
                 (
-                  (
-                    turnosOcupados /
-                    turnosOfrecidos
-                  ) *
-                  100
-                ).toFixed(2),
-              )
+                  turnosOcupados /
+                  turnosOfrecidos
+                ) *
+                100
+              ).toFixed(2),
+            )
             : null;
 
         return {
@@ -1056,11 +1206,11 @@ export class ResumenMensualService {
             cancha.nombre_cancha,
           id_deporte:
             cancha.id_deporte ===
-            null
+              null
               ? null
               : Number(
-                  cancha.id_deporte,
-                ),
+                cancha.id_deporte,
+              ),
           nombre_deporte:
             cancha.nombre_deporte,
 
@@ -1087,7 +1237,7 @@ export class ResumenMensualService {
                 acc +
                 Number(
                   r.monto_total ||
-                    0,
+                  0,
                 ),
               0,
             ),
@@ -1181,7 +1331,7 @@ export class ResumenMensualService {
       ).sort(
         (a, b) =>
           b.reservas_total -
-            a.reservas_total ||
+          a.reservas_total ||
           a.nombre_deporte.localeCompare(
             b.nombre_deporte,
           ),
@@ -1214,7 +1364,7 @@ export class ResumenMensualService {
       diasMap.set(
         dia,
         (diasMap.get(dia) || 0) +
-          1,
+        1,
       );
     }
 
@@ -1227,7 +1377,7 @@ export class ResumenMensualService {
             dia_semana: dia,
             nombre_dia:
               this.nombresDias[
-                dia
+              dia
               ],
             reservas_total:
               cantidad,
@@ -1318,60 +1468,60 @@ export class ResumenMensualService {
 
     const destacados:
       ResumenMensualDestacados =
-      {
-        cancha_mas_utilizada:
-          canchaMasUtilizada
-            ? {
-                id_cancha:
-                  canchaMasUtilizada.id_cancha,
+    {
+      cancha_mas_utilizada:
+        canchaMasUtilizada
+          ? {
+            id_cancha:
+              canchaMasUtilizada.id_cancha,
 
-                nombre_cancha:
-                  canchaMasUtilizada.nombre_cancha,
+            nombre_cancha:
+              canchaMasUtilizada.nombre_cancha,
 
-                reservas_total:
-                  canchaMasUtilizada.reservas_total,
-              }
-            : null,
+            reservas_total:
+              canchaMasUtilizada.reservas_total,
+          }
+          : null,
 
-        deporte_mas_reservado:
-          deporteMasReservado
-            ? {
-                id_deporte:
-                  deporteMasReservado.id_deporte,
+      deporte_mas_reservado:
+        deporteMasReservado
+          ? {
+            id_deporte:
+              deporteMasReservado.id_deporte,
 
-                nombre_deporte:
-                  deporteMasReservado.nombre_deporte,
+            nombre_deporte:
+              deporteMasReservado.nombre_deporte,
 
-                reservas_total:
-                  deporteMasReservado.reservas_total,
-              }
-            : null,
+            reservas_total:
+              deporteMasReservado.reservas_total,
+          }
+          : null,
 
-        dia_mas_demandado:
-          diaMasDemandado
-            ? {
-                dia_semana:
-                  diaMasDemandado.dia_semana,
+      dia_mas_demandado:
+        diaMasDemandado
+          ? {
+            dia_semana:
+              diaMasDemandado.dia_semana,
 
-                nombre_dia:
-                  diaMasDemandado.nombre_dia,
+            nombre_dia:
+              diaMasDemandado.nombre_dia,
 
-                reservas_total:
-                  diaMasDemandado.reservas_total,
-              }
-            : null,
+            reservas_total:
+              diaMasDemandado.reservas_total,
+          }
+          : null,
 
-        hora_mas_demandada:
-          horaMasDemandada
-            ? {
-                hora_inicio:
-                  horaMasDemandada.hora_inicio,
+      hora_mas_demandada:
+        horaMasDemandada
+          ? {
+            hora_inicio:
+              horaMasDemandada.hora_inicio,
 
-                reservas_total:
-                  horaMasDemandada.reservas_total,
-              }
-            : null,
-      };
+            reservas_total:
+              horaMasDemandada.reservas_total,
+          }
+          : null,
+    };
 
     let ocurrenciasTurnosFijosMes =
       0;
@@ -1450,11 +1600,41 @@ export class ResumenMensualService {
       monto_pagado_registrado:
         montoPagadoRegistrado,
 
+      monto_cobrado_efectivo:
+        montoCobradoEfectivo,
+
+      monto_cobrado_electronico:
+        montoCobradoElectronico,
+
+      monto_cobrado_total:
+        montoCobradoTotal,
+
       ingresos_manuales_total:
         ingresosManualesTotal,
 
       detalle_ingresos_manuales:
         detalleIngresos,
+
+      ingresos_manuales_efectivo:
+        ingresosManualesEfectivo,
+
+      ingresos_manuales_electronico:
+        ingresosManualesElectronico,
+
+      ingresos_manuales_sin_clasificar:
+        ingresosManualesSinClasificar,
+
+      ingresos_totales_efectivo:
+        ingresosTotalesEfectivo,
+
+      ingresos_totales_electronico:
+        ingresosTotalesElectronico,
+
+      ingresos_totales_sin_clasificar:
+        ingresosTotalesSinClasificar,
+
+      ingresos_totales_registrados:
+        ingresosTotalesRegistrados,
 
       total_consolidado_informado:
         montoReservasValidas +
@@ -1685,8 +1865,26 @@ export class ResumenMensualService {
         monto_pagado_registrado:
           calculado.monto_pagado_registrado,
 
+        monto_cobrado_efectivo:
+          calculado.monto_cobrado_efectivo,
+
+        monto_cobrado_electronico:
+          calculado.monto_cobrado_electronico,
+
+        monto_cobrado_total:
+          calculado.monto_cobrado_total,
+
         ingresos_manuales_total:
           calculado.ingresos_manuales_total,
+
+        ingresos_manuales_efectivo:
+          calculado.ingresos_manuales_efectivo,
+
+        ingresos_manuales_electronico:
+          calculado.ingresos_manuales_electronico,
+
+        ingresos_manuales_sin_clasificar:
+          calculado.ingresos_manuales_sin_clasificar,
 
         detalle_ingresos_manuales:
           calculado.detalle_ingresos_manuales,

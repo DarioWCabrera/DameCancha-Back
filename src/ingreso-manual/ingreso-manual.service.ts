@@ -42,6 +42,7 @@ export class IngresoManualService {
       categoria: ingreso.categoria,
       concepto: ingreso.concepto,
       monto: Number(ingreso.monto),
+      metodo_pago: ingreso.metodo_pago,
       observaciones: ingreso.observaciones,
       created_at: ingreso.created_at,
       updated_at: ingreso.updated_at,
@@ -260,6 +261,7 @@ export class IngresoManualService {
       categoria: dto.categoria,
       concepto,
       monto: Number(dto.monto),
+      metodo_pago: dto.metodo_pago,
       observaciones,
     });
 
@@ -365,6 +367,10 @@ export class IngresoManualService {
 
     if (dto.monto !== undefined) {
       ingreso.monto = Number(dto.monto);
+    }
+
+    if (dto.metodo_pago !== undefined) {
+      ingreso.metodo_pago = dto.metodo_pago;
     }
 
     if (dto.observaciones !== undefined) {

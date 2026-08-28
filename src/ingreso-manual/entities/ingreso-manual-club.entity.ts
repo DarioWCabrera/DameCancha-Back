@@ -19,6 +19,10 @@ export type CategoriaIngresoManualClub =
   | 'sponsor'
   | 'otro';
 
+export type MetodoPagoIngresoManualClub =
+  | 'efectivo'
+  | 'electronico';
+
 @Index('idx_ingreso_manual_club_fecha', ['fecha'])
 @Index('idx_ingreso_manual_club_categoria', ['categoria'])
 @Entity('ingreso_manual_club')
@@ -58,6 +62,14 @@ export class IngresoManualClub {
     },
   })
   monto!: number;
+
+  @Column({
+    name: 'metodo_pago',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  metodo_pago!: MetodoPagoIngresoManualClub | null;
 
   @Column({
     name: 'observaciones',

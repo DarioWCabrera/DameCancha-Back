@@ -10,7 +10,10 @@ import {
   MinLength,
 } from 'class-validator';
 
-import type { CategoriaIngresoManualClub } from '../entities/ingreso-manual-club.entity';
+import type {
+  CategoriaIngresoManualClub,
+  MetodoPagoIngresoManualClub,
+} from '../entities/ingreso-manual-club.entity';
 
 const CATEGORIAS: CategoriaIngresoManualClub[] = [
   'buffet',
@@ -19,6 +22,11 @@ const CATEGORIAS: CategoriaIngresoManualClub[] = [
   'clase',
   'sponsor',
   'otro',
+];
+
+const METODOS_PAGO: MetodoPagoIngresoManualClub[] = [
+  'efectivo',
+  'electronico',
 ];
 
 export class UpdateIngresoManualClubDto {
@@ -45,6 +53,13 @@ export class UpdateIngresoManualClubDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)
   monto?: number;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(METODOS_PAGO, {
+    message: 'metodo_pago debe ser efectivo o electronico.',
+  })
+  metodo_pago?: MetodoPagoIngresoManualClub;
 
   @IsOptional()
   @IsString()

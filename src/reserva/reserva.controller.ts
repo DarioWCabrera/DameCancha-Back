@@ -21,6 +21,7 @@ import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { CreateReservaDto } from './dto/create-reserva.dto';
 import { UpdateReservaDto } from './dto/update-reserva.dto';
 import { ReservaService } from './reserva.service';
+import { RegistrarCobrosReservaDto } from './dto/registrar-cobros-reserva.dto';
 
 @Controller('reserva')
 @UseGuards(AuthGuard)
@@ -28,7 +29,7 @@ export class ReservaController {
   constructor(
     private readonly reservaService: ReservaService,
     private readonly accessControl: AccessControlService,
-  ) {}
+  ) { }
 
   @Post()
   @UseGuards(RolesGuard)
@@ -123,6 +124,37 @@ export class ReservaController {
       idCancha,
       fecha,
     );
+  }
+
+  @Post(':id/cobros')
+  @UseGuards(RolesGuard)
+  @Roles('dueno', 'club', 'admin')
+  async registrarCobros(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: RegistrarCobrosReservaDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanAccessReserva(
+      request.user,
+      id,
+    );
+
+    return this.reservaService.registrarCobros(id, dto);
+  }
+
+  @Get(':id/cobros')
+  @UseGuards(RolesGuard)
+  @Roles('dueno', 'club', 'admin')
+  async obtenerCobros(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanAccessReserva(
+      request.user,
+      id,
+    );
+
+    return this.reservaService.obtenerCobros(id);
   }
 
   @Get(':id')
