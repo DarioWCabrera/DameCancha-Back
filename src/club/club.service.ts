@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -15,6 +16,7 @@ import { UpdateClubDto } from './dto/update-club.dto';
 import { Club } from './entities/club.entity';
 import { ClubClienteAlias } from './entities/club-cliente-alias.entity';
 import { User } from '../user/entities/user.entity';
+import { ActualizarContactoClubDto } from './dto/actualizar-contacto-club.dto';
 
 @Injectable()
 export class ClubService {
@@ -172,6 +174,69 @@ export class ClubService {
     }
   }
 
+  async actualizarContacto(
+    idClub: number,
+    dto: ActualizarContactoClubDto,
+  ) {
+    const telefono = String(dto.telefono || '').trim();
+    const email = String(dto.email || '').trim().toLowerCase();
+
+    if (!telefono || !email) {
+      throw new BadRequestException(
+        'El teléfono y el email son obligatorios.',
+      );
+    }
+
+    return this.dataSource.transaction(async (manager) => {
+      const clubRepository = manager.getRepository(Club);
+      const userRepository = manager.getRepository(User);
+
+      const club = await clubRepository.findOne({
+        where: { id_club: idClub },
+        relations: ['dueno'],
+      });
+
+      if (!club) {
+        throw new NotFoundException('Club no encontrado.');
+      }
+
+      if (!club.dueno) {
+        throw new NotFoundException(
+          'No se encontró el usuario dueño asociado al club.',
+        );
+      }
+
+      const emailExistente = await userRepository.findOne({
+        where: { email_usuario: email },
+      });
+
+      if (
+        emailExistente &&
+        emailExistente.id_usuario !== club.dueno.id_usuario
+      ) {
+        throw new ConflictException(
+          'Ese email ya está siendo utilizado por otra cuenta.',
+        );
+      }
+
+      club.telefono_club = telefono;
+      club.dueno.telefono_usuario = telefono;
+      club.dueno.email_usuario = email;
+
+      await userRepository.save(club.dueno);
+      await clubRepository.save(club);
+
+      return {
+        message: 'Datos de contacto actualizados correctamente.',
+        id_club: club.id_club,
+        telefono: club.telefono_club,
+        email: club.dueno.email_usuario,
+      };
+    });
+  }
+
+
+
   async getPendientes() {
     const clubs = await this.clubRepository.find({
       where: { estado: 'pendiente_aprobacion' },
@@ -314,82 +379,82 @@ export class ClubService {
     return { message: `Club ${estado === 'activo' ? 'activado' : 'inactivado'} correctamente.` };
   }
   async guardarAliasCliente(
-  idClub: number,
-  idUsuario: number,
-  alias: string,
-) {
-  const aliasLimpio = String(alias || '').trim();
+    idClub: number,
+    idUsuario: number,
+    alias: string,
+  ) {
+    const aliasLimpio = String(alias || '').trim();
 
-  if (!aliasLimpio) {
-    throw new BadRequestException('El alias no puede estar vacío.');
-  }
+    if (!aliasLimpio) {
+      throw new BadRequestException('El alias no puede estar vacío.');
+    }
 
-  if (aliasLimpio.length > 120) {
-    throw new BadRequestException(
-      'El alias no puede superar los 120 caracteres.',
-    );
-  }
+    if (aliasLimpio.length > 120) {
+      throw new BadRequestException(
+        'El alias no puede superar los 120 caracteres.',
+      );
+    }
 
-  const club = await this.clubRepository.findOne({
-    where: { id_club: idClub },
-  });
-
-  if (!club) {
-    throw new NotFoundException('Club no encontrado.');
-  }
-
-  const usuario = await this.userRepository.findOne({
-    where: { id_usuario: idUsuario },
-  });
-
-  if (!usuario) {
-    throw new NotFoundException('Usuario no encontrado.');
-  }
-
-  let registro = await this.clubClienteAliasRepository.findOne({
-    where: {
-      club: { id_club: idClub },
-      usuario: { id_usuario: idUsuario },
-    },
-  });
-
-  if (registro) {
-    registro.alias = aliasLimpio;
-  } else {
-    registro = this.clubClienteAliasRepository.create({
-      club,
-      usuario,
-      alias: aliasLimpio,
+    const club = await this.clubRepository.findOne({
+      where: { id_club: idClub },
     });
-  }
 
-  const guardado =
-    await this.clubClienteAliasRepository.save(registro);
+    if (!club) {
+      throw new NotFoundException('Club no encontrado.');
+    }
 
-  return {
-    id_club_cliente_alias: guardado.id_club_cliente_alias,
-    id_club: idClub,
-    id_usuario: idUsuario,
-    alias: guardado.alias,
-  };
-}
+    const usuario = await this.userRepository.findOne({
+      where: { id_usuario: idUsuario },
+    });
 
-async obtenerAliasCliente(
-  idClub: number,
-  idUsuario: number,
-) {
-  const registro =
-    await this.clubClienteAliasRepository.findOne({
+    if (!usuario) {
+      throw new NotFoundException('Usuario no encontrado.');
+    }
+
+    let registro = await this.clubClienteAliasRepository.findOne({
       where: {
         club: { id_club: idClub },
         usuario: { id_usuario: idUsuario },
       },
     });
 
-  return {
-    id_club: idClub,
-    id_usuario: idUsuario,
-    alias: registro?.alias ?? null,
-  };
-}
+    if (registro) {
+      registro.alias = aliasLimpio;
+    } else {
+      registro = this.clubClienteAliasRepository.create({
+        club,
+        usuario,
+        alias: aliasLimpio,
+      });
+    }
+
+    const guardado =
+      await this.clubClienteAliasRepository.save(registro);
+
+    return {
+      id_club_cliente_alias: guardado.id_club_cliente_alias,
+      id_club: idClub,
+      id_usuario: idUsuario,
+      alias: guardado.alias,
+    };
+  }
+
+  async obtenerAliasCliente(
+    idClub: number,
+    idUsuario: number,
+  ) {
+    const registro =
+      await this.clubClienteAliasRepository.findOne({
+        where: {
+          club: { id_club: idClub },
+          usuario: { id_usuario: idUsuario },
+        },
+      });
+
+    return {
+      id_club: idClub,
+      id_usuario: idUsuario,
+      alias: registro?.alias ?? null,
+    };
+  }
 }

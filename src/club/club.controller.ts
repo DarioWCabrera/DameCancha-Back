@@ -26,6 +26,7 @@ import { RolesGuard } from '../auth/guard/roles.guard';
 import { AccessControlService } from '../auth/services/access-control.service';
 import type { AuthenticatedRequest } from '../auth/types/authenticated-request';
 import { imageUploadOptions } from '../common/uploads/image-upload';
+import { ActualizarContactoClubDto } from './dto/actualizar-contacto-club.dto';
 
 @Controller('club')
 export class ClubController {
@@ -222,6 +223,20 @@ export class ClubController {
       file,
     );
   }
+
+  @Patch(':id/contacto')
+  @UseGuards(AuthGuard, RolesGuard)
+  @Roles('dueno', 'admin', 'club')
+  async actualizarContacto(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: ActualizarContactoClubDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    await this.accessControl.assertCanManageClub(request.user, id);
+
+    return this.clubService.actualizarContacto(id, dto);
+  }
+
 
   @Patch(':id')
   @UseGuards(AuthGuard, RolesGuard)
