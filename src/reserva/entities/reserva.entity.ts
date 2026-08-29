@@ -169,6 +169,24 @@ export class Reserva {
   })
   fecha_cancelacion!: Date | null;
 
+ /*
+  Control del recordatorio automático por WhatsApp.
+*/
+@Column({
+  name: 'recordatorio_whatsapp_enviado_at',
+  type: 'timestamptz',
+  nullable: true,
+})
+recordatorio_whatsapp_enviado_at!: Date | null;
+
+@Column({
+  name: 'recordatorio_whatsapp_message_id',
+  type: 'varchar',
+  length: 255,
+  nullable: true,
+})
+recordatorio_whatsapp_message_id!: string | null;
+
   @Index('idx_reserva_usuario')
   @ManyToOne(() => User, {
     nullable: true,
