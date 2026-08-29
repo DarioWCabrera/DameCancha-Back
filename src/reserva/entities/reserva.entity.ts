@@ -44,6 +44,39 @@ export class Reserva {
   estado!: string;
 
   /*
+    Origen de la reserva:
+    - usuario: creada por el usuario desde DameCancha.
+    - club: cargada manualmente por el dueño/club.
+  */
+  @Column({
+    name: 'origen_reserva',
+    type: 'varchar',
+    length: 20,
+    default: 'usuario',
+  })
+  origen_reserva!: 'usuario' | 'club';
+
+  /*
+    Datos para reservas manuales de clientes que todavía
+    no tienen una cuenta registrada en DameCancha.
+  */
+  @Column({
+    name: 'nombre_cliente_manual',
+    type: 'varchar',
+    length: 160,
+    nullable: true,
+  })
+  nombre_cliente_manual!: string | null;
+
+  @Column({
+    name: 'telefono_cliente_manual',
+    type: 'varchar',
+    length: 30,
+    nullable: true,
+  })
+  telefono_cliente_manual!: string | null;
+
+  /*
     Snapshot de la política que tenía el club cuando se creó esta reserva.
     Si el club cambia su política después, esta reserva mantiene la original.
   */
@@ -137,9 +170,12 @@ export class Reserva {
   fecha_cancelacion!: Date | null;
 
   @Index('idx_reserva_usuario')
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, {
+    nullable: true,
+    onDelete: 'CASCADE',
+  })
   @JoinColumn({ name: 'id_usuario' })
-  usuario!: User;
+  usuario!: User | null;
 
   @Index('idx_reserva_cancha')
   @ManyToOne(() => Cancha, { onDelete: 'CASCADE' })

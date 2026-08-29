@@ -22,6 +22,7 @@ import { CreateReservaDto } from './dto/create-reserva.dto';
 import { UpdateReservaDto } from './dto/update-reserva.dto';
 import { ReservaService } from './reserva.service';
 import { RegistrarCobrosReservaDto } from './dto/registrar-cobros-reserva.dto';
+import { CreateReservaManualClubDto } from './dto/create-reserva-manual-club.dto';
 
 @Controller('reserva')
 @UseGuards(AuthGuard)
@@ -51,6 +52,31 @@ export class ReservaController {
           ? dto.estado
           : 'confirmada',
     });
+  }
+
+  /*
+    Reserva cargada directamente por el dueño/club.
+    Puede vincularse a un usuario registrado o guardar
+    nombre/teléfono de un cliente externo.
+  */
+  @Post('manual')
+  @UseGuards(RolesGuard)
+  @Roles('dueno', 'club', 'admin')
+  async createManualClub(
+    @Body() dto: CreateReservaManualClubDto,
+    @Req() request: AuthenticatedRequest,
+  ) {
+    /*
+      La cancha determina qué club está siendo administrado.
+      Este control impide que un dueño cargue reservas
+      en una cancha perteneciente a otro club.
+    */
+    await this.accessControl.assertCanManageCancha(
+      request.user,
+      dto.id_cancha,
+    );
+
+    return this.reservaService.createManualClub(dto);
   }
 
   @Get()

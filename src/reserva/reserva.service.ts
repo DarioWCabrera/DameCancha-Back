@@ -12,10 +12,12 @@ import { DataSource, EntityManager, QueryFailedError, Repository } from 'typeorm
 import { CreateReservaDto } from './dto/create-reserva.dto';
 import { UpdateReservaDto } from './dto/update-reserva.dto';
 import { RegistrarCobrosReservaDto } from './dto/registrar-cobros-reserva.dto';
+import { CreateReservaManualClubDto } from './dto/create-reserva-manual-club.dto';
 
 import { BloqueoCanchaService } from '../bloqueo-cancha/bloqueo-cancha.service';
 import { BloqueoCancha } from '../bloqueo-cancha/entities/bloqueo-cancha.entity';
 import { Cancha } from '../cancha/entities/cancha.entity';
+import { User } from '../user/entities/user.entity';
 
 import { Reserva } from './entities/reserva.entity';
 import { ReservaCobro } from './entities/reserva-cobro.entity';
@@ -73,6 +75,9 @@ export class ReservaService {
       hora_fin: reserva.hora_fin,
       monto_total: reserva.monto_total,
       estado: reserva.estado,
+      origen_reserva: reserva.origen_reserva,
+      nombre_cliente_manual: reserva.nombre_cliente_manual,
+      telefono_cliente_manual: reserva.telefono_cliente_manual,
       horas_anticipacion_cancelacion_snapshot:
         reserva.horas_anticipacion_cancelacion_snapshot,
       estado_pago: reserva.estado_pago,
@@ -460,13 +465,19 @@ export class ReservaService {
   }
 
   private nombreCompletoUsuario(reserva: Reserva): string {
-    return [
+    const nombreUsuario = [
       reserva.usuario?.nombre_usuario,
       reserva.usuario?.apellido_usuario,
     ]
       .filter(Boolean)
       .join(' ')
       .trim();
+
+    return (
+      nombreUsuario ||
+      String(reserva.nombre_cliente_manual || '').trim() ||
+      'Cliente'
+    );
   }
 
   private async notificarSeguro(
@@ -680,6 +691,9 @@ export class ReservaService {
             horaFin,
           ),
           estado: createReservaDto.estado || 'confirmada',
+          origen_reserva: 'usuario',
+          nombre_cliente_manual: null,
+          telefono_cliente_manual: null,
 
           /*
             Snapshot de la política vigente del club.
@@ -742,6 +756,184 @@ export class ReservaService {
             hora: `${reservaCreada.hora_inicio} - ${reservaCreada.hora_fin}`,
           }),
       );
+    }
+
+    return this.findOne(savedId);
+  }
+
+  /*
+    Crea una reserva manual desde el panel del club.
+
+    Diferencias respecto de una reserva creada por un usuario:
+    - no aplica los límites personales de reservas del usuario;
+    - puede existir sin usuario registrado;
+    - sí respeta horarios habilitados, reservas existentes,
+      bloqueos y turnos fijos;
+    - el monto se calcula en backend usando el precio de la cancha.
+  */
+  async createManualClub(dto: CreateReservaManualClubDto) {
+    const fecha = String(dto.fecha).slice(0, 10);
+    const horaInicio = this.normalizarHora(dto.hora_inicio);
+    const horaFin = this.normalizarHora(dto.hora_fin);
+
+    this.validarRango(fecha, horaInicio, horaFin);
+
+    const idUsuario =
+      dto.id_usuario !== undefined && dto.id_usuario !== null
+        ? Number(dto.id_usuario)
+        : null;
+
+    const nombreCliente = String(dto.nombre_cliente || '').trim();
+    const telefonoCliente = String(dto.telefono_cliente || '').trim();
+
+    if (!idUsuario && nombreCliente.length < 2) {
+      throw new BadRequestException(
+        'Indicá un usuario registrado o el nombre del cliente.',
+      );
+    }
+
+    if (idUsuario !== null && (!Number.isInteger(idUsuario) || idUsuario <= 0)) {
+      throw new BadRequestException(
+        'El usuario indicado no es válido.',
+      );
+    }
+
+    let savedId: number;
+
+    try {
+      savedId = await this.dataSource.transaction(async (manager) => {
+        const cancha = await manager
+          .getRepository(Cancha)
+          .createQueryBuilder('cancha')
+          .innerJoinAndSelect('cancha.id_club', 'club')
+          .where('cancha.id_cancha = :idCancha', {
+            idCancha: dto.id_cancha,
+          })
+          .andWhere('cancha.activa = 1')
+          .andWhere('club.estado = :estadoClub', {
+            estadoClub: 'activo',
+          })
+          .setLock('pessimistic_write')
+          .getOne();
+
+        if (!cancha) {
+          throw new NotFoundException(
+            'Cancha no encontrada, inactiva o perteneciente a un club inactivo.',
+          );
+        }
+
+        let usuarioVinculado: User | null = null;
+
+        if (idUsuario !== null) {
+          usuarioVinculado = await manager.getRepository(User).findOne({
+            where: {
+              id_usuario: idUsuario,
+            },
+          });
+
+          if (!usuarioVinculado) {
+            throw new NotFoundException(
+              'El usuario seleccionado no existe.',
+            );
+          }
+        }
+
+        await this.validarDisponibilidadCancha(
+          manager,
+          dto.id_cancha,
+          fecha,
+          horaInicio,
+          horaFin,
+        );
+
+        const reservaExistente = await this.buscarReservaSolapada(
+          manager,
+          {
+            idCancha: dto.id_cancha,
+            fecha,
+            horaInicio,
+            horaFin,
+          },
+        );
+
+        const bloqueoExistente = await this.buscarBloqueoSolapado(
+          manager,
+          dto.id_cancha,
+          fecha,
+          horaInicio,
+          horaFin,
+        );
+
+        const turnoFijoExistente = await this.buscarTurnoFijoSolapado(
+          manager,
+          dto.id_cancha,
+          fecha,
+          horaInicio,
+          horaFin,
+        );
+
+        if (reservaExistente) {
+          throw new ConflictException(
+            'La cancha ya está reservada para esa fecha y horario.',
+          );
+        }
+
+        if (bloqueoExistente) {
+          throw new ConflictException(
+            'La cancha fue bloqueada por el club para esa fecha y horario.',
+          );
+        }
+
+        if (turnoFijoExistente) {
+          throw new ConflictException(
+            'La cancha tiene un turno fijo activo para esa fecha y horario.',
+          );
+        }
+
+        const reserva = manager.getRepository(Reserva).create({
+          fecha: fecha as any,
+          hora_inicio: horaInicio,
+          hora_fin: horaFin,
+          monto_total: this.calcularMonto(
+            cancha,
+            horaInicio,
+            horaFin,
+          ),
+          estado: 'confirmada',
+          origen_reserva: 'club',
+          nombre_cliente_manual:
+            usuarioVinculado
+              ? null
+              : nombreCliente || null,
+          telefono_cliente_manual:
+            usuarioVinculado
+              ? null
+              : telefonoCliente || null,
+          horas_anticipacion_cancelacion_snapshot:
+            Number(
+              cancha.id_club.horas_anticipacion_cancelacion ?? 2,
+            ),
+          estado_pago: 'pago_en_club',
+          usuario: usuarioVinculado,
+          cancha: {
+            id_cancha: dto.id_cancha,
+          } as any,
+        });
+
+        const saved = await manager
+          .getRepository(Reserva)
+          .save(reserva);
+
+        return saved.id_reserva;
+      });
+    } catch (error) {
+      if (this.esSolapamientoPostgres(error)) {
+        throw new ConflictException(
+          'La cancha ya está reservada para esa fecha y horario.',
+        );
+      }
+
+      throw error;
     }
 
     return this.findOne(savedId);
@@ -1065,7 +1257,14 @@ export class ReservaService {
 
     const idCancha = dto.id_cancha ?? anterior.cancha.id_cancha;
     const idUsuario =
-      dto.id_usuario ?? anterior.usuario.id_usuario;
+      dto.id_usuario ??
+      anterior.usuario?.id_usuario ??
+      null;
+
+    const aplicaLimitesUsuario =
+      anterior.origen_reserva !== 'club' &&
+      idUsuario !== null;
+
     const fecha = String(dto.fecha ?? anterior.fecha).slice(0, 10);
     const horaInicio = this.normalizarHora(
       dto.hora_inicio ?? anterior.hora_inicio,
@@ -1078,7 +1277,12 @@ export class ReservaService {
 
     try {
       await this.dataSource.transaction(async (manager) => {
-        await this.bloquearLimitesDeUsuario(manager, idUsuario);
+        if (aplicaLimitesUsuario && idUsuario !== null) {
+          await this.bloquearLimitesDeUsuario(
+            manager,
+            idUsuario,
+          );
+        }
 
         const cancha = await manager
           .getRepository(Cancha)
@@ -1098,12 +1302,14 @@ export class ReservaService {
           );
         }
 
-        await this.validarLimitesDeUsuario(manager, {
-          idUsuario,
-          idClub: cancha.id_club.id_club,
-          fecha,
-          excluirId: id,
-        });
+        if (aplicaLimitesUsuario && idUsuario !== null) {
+          await this.validarLimitesDeUsuario(manager, {
+            idUsuario,
+            idClub: cancha.id_club.id_club,
+            fecha,
+            excluirId: id,
+          });
+        }
 
         await this.validarDisponibilidadCancha(
           manager,
@@ -1335,12 +1541,15 @@ export class ReservaService {
       }
     }
 
-    if (esDueno && reserva.usuario?.email_usuario) {
+    const emailUsuarioReserva =
+      reserva.usuario?.email_usuario ?? null;
+
+    if (esDueno && emailUsuarioReserva) {
       await this.notificarSeguro(
         'la notificación de cancelación del club al usuario',
         () =>
           this.mailService.sendReservationCancelledByClubToUser({
-            email: reserva.usuario.email_usuario,
+            email: emailUsuarioReserva,
             nombre: this.nombreCompletoUsuario(reserva),
             reservationId: reserva.id_reserva,
             club: reserva.cancha.id_club.nombre_club,
