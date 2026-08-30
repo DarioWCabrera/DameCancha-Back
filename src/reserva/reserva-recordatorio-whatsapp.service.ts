@@ -379,7 +379,7 @@ export class ReservaRecordatorioWhatsappService {
               to: telefono,
 
               templateName:
-                'recordatorio_reserva',
+                'recordatorio_reserva_v2',
 
               languageCode:
                 'es_AR',
