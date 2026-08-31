@@ -1077,111 +1077,132 @@ export class ReservaService {
   }
 
   async registrarCobros(
-    idReserva: number,
-    dto: RegistrarCobrosReservaDto,
-  ) {
-    const reserva = await this.reservaRepository.findOne({
-      where: { id_reserva: idReserva },
-    });
+  idReserva: number,
+  dto: RegistrarCobrosReservaDto,
+) {
+  const reserva = await this.reservaRepository.findOne({
+    where: { id_reserva: idReserva },
+  });
 
-    if (!reserva) {
-      throw new NotFoundException('Reserva no encontrada.');
-    }
+  if (!reserva) {
+    throw new NotFoundException('Reserva no encontrada.');
+  }
 
-    if (reserva.estado === 'cancelada') {
-      throw new BadRequestException(
-        'No se pueden registrar cobros sobre una reserva cancelada.',
-      );
-    }
+  if (reserva.estado === 'cancelada') {
+    throw new BadRequestException(
+      'No se pueden registrar cobros sobre una reserva cancelada.',
+    );
+  }
+
+  /*
+    Trabajamos en centavos para evitar errores de coma flotante.
+    Ejemplo: 10000.50 => 1000050 centavos.
+  */
+  const montoReservaCentavos = Math.round(
+    Number(reserva.monto_total) * 100,
+  );
+
+  const cobrosNormalizados = dto.cobros.map((cobro) => ({
+    monto: Number(cobro.monto),
+    metodo_pago: cobro.metodo_pago,
+    participante_nombre:
+      cobro.participante_nombre?.trim() || null,
+  }));
+
+  const totalCobrosCentavos = cobrosNormalizados.reduce(
+    (total, cobro) =>
+      total + Math.round(Number(cobro.monto) * 100),
+    0,
+  );
+
+  if (totalCobrosCentavos !== montoReservaCentavos) {
+    throw new BadRequestException(
+      'La suma de los cobros debe coincidir con el importe total del turno.',
+    );
+  }
+
+  return this.dataSource.transaction(async (manager) => {
+    const repoCobros = manager.getRepository(ReservaCobro);
+    const repoReservas = manager.getRepository(Reserva);
 
     /*
-      Trabajamos en centavos para evitar errores de coma flotante.
-      Ejemplo: 10000.50 => 1000050 centavos.
+      El formulario envía el estado completo del cobro.
+      Si el club vuelve a editarlo, reemplazamos los movimientos anteriores
+      dentro de la misma transacción.
     */
-    const montoReservaCentavos = Math.round(
-      Number(reserva.monto_total) * 100,
+    await repoCobros
+      .createQueryBuilder()
+      .delete()
+      .from(ReservaCobro)
+      .where('id_reserva = :idReserva', { idReserva })
+      .execute();
+
+    const nuevosCobros = repoCobros.create(
+      cobrosNormalizados.map((cobro) => ({
+        reserva: {
+          id_reserva: idReserva,
+        } as Reserva,
+        monto: cobro.monto,
+        metodo_pago: cobro.metodo_pago,
+        participante_nombre: cobro.participante_nombre,
+      })),
     );
 
-    const cobrosNormalizados = dto.cobros.map((cobro) => ({
-      monto: Number(cobro.monto),
-      metodo_pago: cobro.metodo_pago,
-      participante_nombre:
-        cobro.participante_nombre?.trim() || null,
-    }));
+    const cobrosGuardados = await repoCobros.save(nuevosCobros);
 
-    const totalCobrosCentavos = cobrosNormalizados.reduce(
-      (total, cobro) =>
-        total + Math.round(Number(cobro.monto) * 100),
-      0,
+    /*
+      Como el DTO exige que la suma de los cobros coincida exactamente
+      con el total del turno, al llegar hasta acá la reserva está paga.
+    */
+    const fechaPago = reserva.fecha_pago ?? new Date();
+
+    await repoReservas.update(
+      { id_reserva: idReserva },
+      {
+        estado_pago: 'pagado',
+        monto_pagado: montoReservaCentavos / 100,
+        fecha_pago: fechaPago,
+      },
     );
 
-    if (totalCobrosCentavos !== montoReservaCentavos) {
-      throw new BadRequestException(
-        'La suma de los cobros debe coincidir con el importe total del turno.',
-      );
-    }
-
-    return this.dataSource.transaction(async (manager) => {
-      const repoCobros = manager.getRepository(ReservaCobro);
-
-      /*
-        El formulario envía el estado completo del cobro.
-        Si el club vuelve a editarlo, reemplazamos los movimientos anteriores
-        dentro de la misma transacción.
-      */
-      await repoCobros
-        .createQueryBuilder()
-        .delete()
-        .from(ReservaCobro)
-        .where('id_reserva = :idReserva', { idReserva })
-        .execute();
-
-      const nuevosCobros = repoCobros.create(
-        cobrosNormalizados.map((cobro) => ({
-          reserva: {
-            id_reserva: idReserva,
-          } as Reserva,
-          monto: cobro.monto,
-          metodo_pago: cobro.metodo_pago,
-          participante_nombre: cobro.participante_nombre,
-        })),
+    const efectivoCentavos = cobrosGuardados
+      .filter((cobro) => cobro.metodo_pago === 'efectivo')
+      .reduce(
+        (total, cobro) =>
+          total + Math.round(Number(cobro.monto) * 100),
+        0,
       );
 
-      const cobrosGuardados = await repoCobros.save(nuevosCobros);
+    const electronicoCentavos = cobrosGuardados
+      .filter((cobro) => cobro.metodo_pago === 'electronico')
+      .reduce(
+        (total, cobro) =>
+          total + Math.round(Number(cobro.monto) * 100),
+        0,
+      );
 
-      const efectivoCentavos = cobrosGuardados
-        .filter((cobro) => cobro.metodo_pago === 'efectivo')
-        .reduce(
-          (total, cobro) =>
-            total + Math.round(Number(cobro.monto) * 100),
-          0,
-        );
+    return {
+      id_reserva: idReserva,
+      monto_total: montoReservaCentavos / 100,
+      total_efectivo: efectivoCentavos / 100,
+      total_electronico: electronicoCentavos / 100,
+      total_cobrado:
+        (efectivoCentavos + electronicoCentavos) / 100,
 
-      const electronicoCentavos = cobrosGuardados
-        .filter((cobro) => cobro.metodo_pago === 'electronico')
-        .reduce(
-          (total, cobro) =>
-            total + Math.round(Number(cobro.monto) * 100),
-          0,
-        );
+      estado_pago: 'pagado',
+      monto_pagado: montoReservaCentavos / 100,
+      fecha_pago: fechaPago,
 
-      return {
-        id_reserva: idReserva,
-        monto_total: montoReservaCentavos / 100,
-        total_efectivo: efectivoCentavos / 100,
-        total_electronico: electronicoCentavos / 100,
-        total_cobrado:
-          (efectivoCentavos + electronicoCentavos) / 100,
-        cobros: cobrosGuardados.map((cobro) => ({
-          id_reserva_cobro: cobro.id_reserva_cobro,
-          monto: Number(cobro.monto),
-          metodo_pago: cobro.metodo_pago,
-          participante_nombre: cobro.participante_nombre,
-          created_at: cobro.created_at,
-        })),
-      };
-    });
-  }
+      cobros: cobrosGuardados.map((cobro) => ({
+        id_reserva_cobro: cobro.id_reserva_cobro,
+        monto: Number(cobro.monto),
+        metodo_pago: cobro.metodo_pago,
+        participante_nombre: cobro.participante_nombre,
+        created_at: cobro.created_at,
+      })),
+    };
+  });
+}
 
   async obtenerCobros(idReserva: number) {
     const reserva = await this.reservaRepository.findOne({
