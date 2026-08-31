@@ -194,12 +194,20 @@ export class ReservaService {
   }
 
   private calcularMonto(
-    cancha: Cancha,
-    _horaInicio: string,
-    _horaFin: string,
-  ): number {
-    return Number(cancha.precio_por_hora || 0);
+  cancha: Cancha,
+  _horaInicio: string,
+  _horaFin: string,
+): number {
+  const precio = Number(cancha.precio_por_hora);
+
+  if (!Number.isFinite(precio) || precio <= 0) {
+    throw new BadRequestException(
+      'Esta cancha todavía no tiene un precio configurado. El club debe cargar un precio mayor a $0 antes de recibir reservas.',
+    );
   }
+
+  return precio;
+}
 
   private buscarReservaSolapada(
     manager: EntityManager,

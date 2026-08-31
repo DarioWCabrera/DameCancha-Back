@@ -1,5 +1,15 @@
 import { Transform, Type } from 'class-transformer';
-import { IsInt, IsNumber, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsDefined,
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateCanchaDto {
   @Type(() => Number)
@@ -28,12 +38,19 @@ export class CreateCanchaDto {
   @MaxLength(80)
   tipo_suelo?: string;
 
-  @IsOptional()
+  @IsDefined({
+    message: 'El precio de la cancha es obligatorio.',
+  })
   @Type(() => Number)
-  @IsNumber({ maxDecimalPlaces: 2 })
-  @Min(0)
+  @IsNumber(
+    { maxDecimalPlaces: 2 },
+    { message: 'El precio de la cancha debe ser un número válido.' },
+  )
+  @Min(0.01, {
+    message: 'El precio de la cancha debe ser mayor a $0.',
+  })
   @Max(999999999.99)
-  precio_por_hora?: number;
+  precio_por_hora!: number;
 
   @IsOptional()
   @Type(() => Number)
