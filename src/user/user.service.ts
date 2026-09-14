@@ -198,19 +198,6 @@ export class UserService {
     }
   }
 
-  async countRegisteredUsers() {
-    const total = await this.userRepository.count({
-      where: {
-        tipo_usuario: 'usuario',
-        estado_usuario: 'activo',
-      },
-    });
-
-    return {
-      total,
-    };
-  }
-
   async findAll() {
     const users = await this.userRepository.find({ relations: ['clubs'] });
     return users.map((user) => this.mapearUsuarioSeguro(user));
@@ -223,13 +210,6 @@ export class UserService {
     });
     if (!user) throw new NotFoundException('Usuario no encontrado.');
     return this.mapearUsuarioSeguro(user);
-  }
-
-  async existsByEmail(email: string) {
-    const exists = await this.userRepository.exist({
-      where: { email_usuario: this.normalizarEmail(email) },
-    });
-    return { exists };
   }
 
   async existsByDni(dni: string) {

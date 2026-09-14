@@ -17,14 +17,28 @@ async function bootstrap() {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  app.use((request, response, next) => {
+  const origin = request.headers.origin;
+
+  if (origin && !allowedOrigins.includes(origin)) {
+    response.status(403).json({
+      statusCode: 403,
+      error: 'Forbidden',
+      message: 'Origen no permitido por CORS.',
+    });
+    return;
+  }
+
+  next();
+}); 
+
   app.enableCors({
     origin(origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
-      callback(new Error('Origen no permitido por CORS.'), false);
-    },
+  callback(
+    null,
+    !origin || allowedOrigins.includes(origin),
+  );
+},
     methods: ['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-Id'],
     exposedHeaders: ['X-Request-Id'],

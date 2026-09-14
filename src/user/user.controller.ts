@@ -84,23 +84,6 @@ export class UserController {
   }
 
   /**
-   * Verificación de email.
-   *
-   * Se mantiene en 20 consultas cada 15 minutos.
-   */
-  @Post('email')
-  @UseGuards(RateLimitGuard)
-  @RateLimit({
-    limit: 20,
-    windowMs: 15 * 60 * 1000,
-  })
-  existsEmail(
-    @Body('email') email: string,
-  ) {
-    return this.userService.existsByEmail(email);
-  }
-
-  /**
    * Verificación de DNI.
    *
    * Se mantiene en 20 consultas cada 15 minutos.
@@ -205,11 +188,6 @@ export class UserController {
       datosRegistro,
       file,
     );
-  }
-
-  @Get('count')
-  countRegisteredUsers() {
-    return this.userService.countRegisteredUsers();
   }
 
   /**
