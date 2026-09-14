@@ -10,18 +10,28 @@ import {
 } from 'class-validator';
 
 const PASSWORD_PATTERN = /^(?=.*[A-Za-zÁÉÍÓÚáéíóúÑñ])(?=.*\d).{8,128}$/;
+const NAME_PATTERN =
+  /^[\p{L}\p{M}]+(?:[ '\-’][\p{L}\p{M}]+)*$/u;
 
 export class CreateUserDto {
   @Transform(({ value }) => String(value || '').trim())
   @IsString()
   @MinLength(2)
   @MaxLength(100)
+  @Matches(NAME_PATTERN, {
+    message:
+      'El nombre solo puede contener letras, espacios, apóstrofes y guiones.',
+  })
   nombre_usuario!: string;
 
   @Transform(({ value }) => String(value || '').trim())
   @IsString()
   @MinLength(2)
   @MaxLength(100)
+  @Matches(NAME_PATTERN, {
+    message:
+      'El apellido solo puede contener letras, espacios, apóstrofes y guiones.',
+  })
   apellido_usuario!: string;
 
   @Transform(({ value }) => String(value || '').trim().toLowerCase())
@@ -87,6 +97,6 @@ export class CreateUserDto {
   canchas_dueno?: unknown[];
 
   @IsOptional()
-@IsString()
-recaptchaToken?: string;
+  @IsString()
+  recaptchaToken?: string;
 }

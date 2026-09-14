@@ -12,17 +12,28 @@ import {
 const trim = ({ value }: { value: unknown }) =>
   String(value ?? '').trim();
 
+const NAME_PATTERN =
+  /^[\p{L}\p{M}]+(?:[ '\-’][\p{L}\p{M}]+)*$/u;
+
 export class RegisterOwnerDto {
   @Transform(trim)
   @IsString()
   @MinLength(2)
   @MaxLength(100)
+  @Matches(NAME_PATTERN, {
+    message:
+      'El nombre solo puede contener letras, espacios, apóstrofes y guiones.',
+  })
   nombre!: string;
 
   @Transform(trim)
   @IsString()
   @MinLength(2)
   @MaxLength(100)
+  @Matches(NAME_PATTERN, {
+    message:
+      'El apellido solo puede contener letras, espacios, apóstrofes y guiones.',
+  })
   apellido!: string;
 
   @Transform(({ value }) =>

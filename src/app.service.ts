@@ -13,9 +13,19 @@ export class AppService {
     };
   }
 
-  async getHealth() {
+  getHealth() {
+    return {
+      status: 'ok',
+      service: 'DameCancha API',
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  async getDatabaseHealth() {
     const startedAt = Date.now();
+
     await this.dataSource.query('SELECT 1');
+
     return {
       status: 'ok',
       database: 'up',

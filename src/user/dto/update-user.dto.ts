@@ -1,17 +1,35 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
+
+const NAME_PATTERN =
+  /^[\p{L}\p{M}]+(?:[ '\-’][\p{L}\p{M}]+)*$/u;
 
 export class UpdateUserDto {
   @IsOptional()
   @Transform(({ value }) => String(value || '').trim())
   @IsString()
   @MaxLength(100)
+  @Matches(NAME_PATTERN, {
+    message:
+      'El nombre solo puede contener letras, espacios, apóstrofes y guiones.',
+  })
   nombre_usuario?: string;
 
   @IsOptional()
   @Transform(({ value }) => String(value || '').trim())
   @IsString()
   @MaxLength(100)
+  @Matches(NAME_PATTERN, {
+    message:
+      'El apellido solo puede contener letras, espacios, apóstrofes y guiones.',
+  })
   apellido_usuario?: string;
 
   @IsOptional()

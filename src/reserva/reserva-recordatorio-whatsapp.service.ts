@@ -441,10 +441,9 @@ export class ReservaRecordatorioWhatsappService {
     solamente las fechas que pueden caer dentro
     de las próximas 3 horas.
   */
-  @Cron('0 */10 * * * *', {
-    timeZone:
-      'America/Argentina/Buenos_Aires',
-  })
+  @Cron('0 0 * * * *', {
+  timeZone: 'America/Argentina/Buenos_Aires',
+})
   async enviarRecordatoriosPendientes() {
     if (this.ejecutando) {
       this.logger.warn(
