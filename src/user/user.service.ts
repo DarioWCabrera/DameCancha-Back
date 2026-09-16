@@ -19,6 +19,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 import { RegisterOwnerDto } from '../auth/dto/register-owner.dto';
 import { unlink } from 'fs/promises';
 import { MailService } from '../mail/mail.service';
+import { PushDevice } from './entities/push-device.entity';
 
 
 @Injectable()
@@ -32,10 +33,78 @@ export class UserService {
     @InjectRepository(Club)
     private clubRepository: Repository<Club>,
 
+    @InjectRepository(PushDevice)
+    private pushDeviceRepository: Repository<PushDevice>,
+
     private dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
   ) { }
+
+  async registrarPushDevice(
+  idUsuario: number,
+  fcmToken: string,
+) {
+  const token = String(fcmToken || '').trim();
+
+  if (!token) {
+    throw new BadRequestException(
+      'El token del dispositivo es obligatorio.',
+    );
+  }
+
+  const usuario = await this.userRepository.findOne({
+    where: {
+      id_usuario: idUsuario,
+    },
+  });
+
+  if (!usuario) {
+    throw new NotFoundException(
+      'Usuario no encontrado.',
+    );
+  }
+
+  const dispositivoExistente =
+    await this.pushDeviceRepository.findOne({
+      where: {
+        fcm_token: token,
+      },
+      relations: {
+        usuario: true,
+      },
+    });
+
+  if (dispositivoExistente) {
+    dispositivoExistente.usuario = usuario;
+    dispositivoExistente.plataforma = 'android';
+    dispositivoExistente.activo = true;
+
+    await this.pushDeviceRepository.save(
+      dispositivoExistente,
+    );
+
+    return {
+      ok: true,
+      registrado: true,
+    };
+  }
+
+  const dispositivo =
+    this.pushDeviceRepository.create({
+      usuario,
+      fcm_token: token,
+      plataforma: 'android',
+      activo: true,
+    });
+
+  await this.pushDeviceRepository.save(dispositivo);
+
+  return {
+    ok: true,
+    registrado: true,
+  };
+}
 
   private normalizarEmail(email: string): string {
     return String(email || '').trim().toLowerCase();
@@ -625,6 +694,7 @@ export class UserService {
         'El club se encuentra inactivo y no puede operar.',
       );
     }
+
 
     return {
       message: 'Login exitoso',

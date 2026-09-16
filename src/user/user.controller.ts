@@ -35,6 +35,7 @@ import { RateLimit } from '../common/rate-limit/rate-limit.decorator';
 import { RateLimitGuard } from '../common/rate-limit/rate-limit.guard';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RecaptchaService } from '../common/recaptcha/recaptcha.service';
+import { RegisterPushDeviceDto } from './dto/register-push-device.dto';
 
 @Controller('user')
 export class UserController {
@@ -142,6 +143,18 @@ export class UserController {
       body.password,
     );
   }
+
+  @Post('push-device')
+@UseGuards(AuthGuard)
+registrarPushDevice(
+  @Req() req: AuthenticatedRequest,
+  @Body() body: RegisterPushDeviceDto,
+) {
+  return this.userService.registrarPushDevice(
+    req.user.sub,
+    body.fcm_token,
+  );
+}
 
   /**
    * Registro de dueño + club.

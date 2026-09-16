@@ -11,11 +11,13 @@ import { Club } from '../club/entities/club.entity';
 import { RecaptchaService } from '../common/recaptcha/recaptcha.service';
 import { MailModule } from '../mail/mail.module';
 
+import { PushDevice } from './entities/push-device.entity';
+
 @Module({
   imports: [
     ConfigModule,
     MailModule,
-    TypeOrmModule.forFeature([User, Club]),
+    TypeOrmModule.forFeature([User, Club, PushDevice]),
   ],
 
   controllers: [UserController],
